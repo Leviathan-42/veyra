@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "blocktracker",
+  "version": "${version}",
+  "name": "Veyra",
+  "description": "Client-side Fabric utility overlays for block and entity tracking.",
+  "authors": ["Veyra"],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.blocktracker.BlockTrackerClient"
+    ]
+  },
+  "mixins": [
+    "blocktracker.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.2",
+    "java": ">=25"
+  }
+}

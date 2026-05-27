@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "dev.blocktracker.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractButtonThemeMixin",
+    "HudMixin",
+    "MinecraftClientMixin",
+    "ScreenThemeMixin",
+    "TitleScreenThemeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

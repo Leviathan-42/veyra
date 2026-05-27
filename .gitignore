@@ -1,0 +1,26 @@
+# Workspace tooling/build output
+.tools/
+
+# Node/Svelte
+launcher/node_modules/
+launcher/dist/
+
+# Tauri/Rust
+launcher/src-tauri/target/
+launcher/src-tauri/gen/
+
+# Gradle/Fabric mod
+mod/.gradle/
+mod/build/
+
+# Logs and local runtime data
+*.log
+logs/
+crash-reports/
+account.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

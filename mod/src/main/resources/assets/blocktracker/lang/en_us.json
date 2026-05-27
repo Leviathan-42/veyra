@@ -1,0 +1,8 @@
+{
+  "screen.blocktracker.search": "Veyra Search",
+  "message.blocktracker.enter_block": "Enter a block name or id",
+  "message.blocktracker.unknown_block": "Unknown block",
+  "message.blocktracker.no_matches": "No close block matches",
+  "message.blocktracker.suggestions": "Press Enter to track the selected result",
+  "message.blocktracker.tracking": "Tracking %s"
+}

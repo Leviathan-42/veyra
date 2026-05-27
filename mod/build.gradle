@@ -1,0 +1,45 @@
+plugins {
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+def launcherDir = file("${System.getenv('APPDATA')}/VeyraLauncher")
+def legacyLauncherDir = file("${System.getenv('APPDATA')}/BlockTrackerLauncher")
+def minecraftDir = file("${launcherDir.exists() ? launcherDir : legacyLauncherDir}/minecraft")
+def minecraftJar = file("${minecraftDir}/versions/${minecraft_version}/${minecraft_version}.jar")
+def libraryJars = fileTree("${minecraftDir}/libraries") {
+    include '**/*.jar'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly files(minecraftJar)
+    compileOnly libraryJars
+}
+
+processResources {
+    inputs.property 'version', project.version
+
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
