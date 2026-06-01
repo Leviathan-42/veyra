@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.blocktracker.BlockSearchScreen;
 import dev.blocktracker.BlockTrackerConfigScreen;
 import dev.blocktracker.BlockTrackerRenderer;
+import dev.blocktracker.BlockTrackerState;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -31,8 +32,12 @@ public abstract class MinecraftClientMixin {
                 InputConstants.KEY_BACKSLASH
         );
 
-        if (backslashDown && !blockTracker$backslashWasDown && client.gui.screen() == null) {
-            client.gui.setScreen(new BlockSearchScreen());
+        if (backslashDown && !blockTracker$backslashWasDown) {
+            if (client.screen instanceof BlockSearchScreen) {
+                client.setScreen(null);
+            } else {
+                client.setScreen(new BlockSearchScreen());
+            }
         }
 
         boolean rightShiftDown = InputConstants.isKeyDown(
@@ -41,15 +46,16 @@ public abstract class MinecraftClientMixin {
         );
 
         if (rightShiftDown && !blockTracker$rightShiftWasDown) {
-            if (client.gui.screen() instanceof BlockTrackerConfigScreen) {
-                client.gui.setScreen(null);
-            } else if (client.gui.screen() == null) {
-                client.gui.setScreen(new BlockTrackerConfigScreen());
+            if (client.screen instanceof BlockTrackerConfigScreen) {
+                client.setScreen(null);
+            } else if (client.screen == null) {
+                client.setScreen(new BlockTrackerConfigScreen());
             }
         }
 
         blockTracker$backslashWasDown = backslashDown;
         blockTracker$rightShiftWasDown = rightShiftDown;
+        BlockTrackerState.updatePlayerTracking(client);
         BlockTrackerRenderer.emit(client);
     }
 }

@@ -21,6 +21,42 @@ use tokio::{
 };
 
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+const MODRINTH_API: &str = "https://api.modrinth.com/v2";
+const MANAGED_MODS: &[ManagedMod] = &[
+    ManagedMod {
+        slug: "fabric-api",
+        label: "Fabric API",
+    },
+    ManagedMod {
+        slug: "sodium",
+        label: "Sodium",
+    },
+    ManagedMod {
+        slug: "lithium",
+        label: "Lithium",
+    },
+    ManagedMod {
+        slug: "ferrite-core",
+        label: "FerriteCore",
+    },
+    ManagedMod {
+        slug: "entityculling",
+        label: "EntityCulling",
+    },
+    ManagedMod {
+        slug: "immediatelyfast",
+        label: "ImmediatelyFast",
+    },
+    ManagedMod {
+        slug: "iris",
+        label: "Iris Shaders",
+    },
+];
+
+struct ManagedMod {
+    slug: &'static str,
+    label: &'static str,
+}
 
 #[derive(Debug, Deserialize)]
 struct VersionManifest {
@@ -113,6 +149,20 @@ struct AssetObjects {
 struct AssetObject {
     hash: String,
     size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModrinthVersion {
+    files: Vec<ModrinthFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModrinthFile {
+    url: String,
+    filename: String,
+    hashes: HashMap<String, String>,
+    size: u64,
+    primary: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,12 +328,14 @@ pub async fn install_and_launch(
     app: AppHandle,
     java_path: String,
     version_id: String,
+    quick_play_server: Option<String>,
 ) -> Result<LaunchResult> {
     let account = auth::launch_account().await?;
     let game_dir = paths::game_dir()?;
     fs::create_dir_all(&game_dir).await?;
     fs::create_dir_all(game_dir.join("mods")).await?;
     sync_development_block_tracker_mod(&app, &game_dir).await?;
+    install_managed_client_mods(&app, &game_dir, &version_id).await?;
 
     app.emit("launcher-status", format!("Installing {version_id}"))
         .ok();
@@ -312,6 +364,7 @@ pub async fn install_and_launch(
         &account.profile.name,
         &account.profile.id,
         &account.access_token,
+        quick_play_server.as_deref(),
     ));
 
     app.emit("launcher-status", "Starting Minecraft").ok();
@@ -328,6 +381,102 @@ pub async fn install_and_launch(
     stream_child_output(&app, child, pid);
 
     Ok(LaunchResult { pid })
+}
+
+async fn install_managed_client_mods(
+    app: &AppHandle,
+    game_dir: &Path,
+    version_id: &str,
+) -> Result<()> {
+    let mods_dir = game_dir.join("mods");
+    fs::create_dir_all(&mods_dir).await?;
+    remove_old_managed_client_mods(&mods_dir).await?;
+
+    for managed in MANAGED_MODS {
+        if let Err(error) = install_modrinth_mod(app, &mods_dir, managed, version_id).await {
+            app.emit(
+                "launch-log",
+                format!("Skipped {} for {version_id}: {error}", managed.label),
+            )
+            .ok();
+        }
+    }
+
+    Ok(())
+}
+
+async fn remove_old_managed_client_mods(mods_dir: &Path) -> Result<()> {
+    let mut entries = fs::read_dir(mods_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jar") {
+            continue;
+        }
+
+        let file_name = entry.file_name().to_string_lossy().to_lowercase();
+        let managed = file_name.starts_with("fabric-api-")
+            || file_name.starts_with("sodium-fabric-")
+            || file_name.starts_with("lithium-fabric-")
+            || file_name.starts_with("iris-fabric-")
+            || file_name.starts_with("ferritecore-")
+            || file_name.starts_with("entityculling-fabric-")
+            || file_name.starts_with("immediatelyfast-fabric-");
+
+        if managed {
+            fs::remove_file(path).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn install_modrinth_mod(
+    app: &AppHandle,
+    mods_dir: &Path,
+    managed: &ManagedMod,
+    version_id: &str,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{MODRINTH_API}/project/{}/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22{}%22%5D",
+        managed.slug, version_id
+    );
+    let versions: Vec<ModrinthVersion> = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "VeyraLauncher")
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let version = versions
+        .first()
+        .ok_or_else(|| anyhow!("no compatible Fabric build found"))?;
+    let file = version
+        .files
+        .iter()
+        .find(|file| file.primary)
+        .or_else(|| version.files.first())
+        .ok_or_else(|| anyhow!("Modrinth version has no files"))?;
+    let destination = mods_dir.join(&file.filename);
+
+    download_url(
+        app,
+        managed.label,
+        &file.url,
+        &destination,
+        file.hashes.get("sha1").map(String::as_str),
+        Some(file.size),
+    )
+    .await?;
+
+    app.emit(
+        "launch-log",
+        format!("Installed {} ({})", managed.label, file.filename),
+    )
+    .ok();
+
+    Ok(())
 }
 
 async fn sync_development_block_tracker_mod(app: &AppHandle, game_dir: &Path) -> Result<()> {
@@ -683,21 +832,110 @@ async fn download_url(
         return Ok(());
     }
 
+    let mut last_error = None;
+    for attempt in 1..=5 {
+        match download_url_once(app, label, url, path, sha1, size, attempt).await {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last_error = Some(error);
+                tokio::time::sleep(std::time::Duration::from_millis(350 * attempt)).await;
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| anyhow!("Download failed: {label}")))
+}
+
+async fn download_url_once(
+    app: &AppHandle,
+    label: &str,
+    url: &str,
+    path: &Path,
+    sha1: Option<&str>,
+    size: Option<u64>,
+    attempt: u64,
+) -> Result<()> {
+    if valid_existing(path, sha1, size).await? {
+        return Ok(());
+    }
+
+    if path.exists() {
+        let _ = fs::remove_file(path).await;
+    }
+
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
 
-    app.emit("launcher-status", format!("Downloading {label}"))
-        .ok();
-    let response = reqwest::get(url).await?.error_for_status()?;
+    let part_path = partial_path(path)?;
+    let mut resume_from = match fs::metadata(&part_path).await {
+        Ok(metadata) => metadata.len(),
+        Err(_) => 0,
+    };
+
+    if let Some(expected_size) = size {
+        if resume_from > expected_size {
+            let _ = fs::remove_file(&part_path).await;
+            resume_from = 0;
+        }
+    }
+
+    let resume_text = if resume_from > 0 {
+        format!("; resuming at {} KB", resume_from / 1024)
+    } else {
+        String::new()
+    };
+    app.emit(
+        "launcher-status",
+        format!("Downloading {label} (try {attempt}/5{resume_text})"),
+    )
+    .ok();
+
+    let client = reqwest::Client::new();
+    let mut request = client.get(url);
+    if resume_from > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+    }
+
+    let response = request.send().await?;
+    let status = response.status();
+    if resume_from > 0 && status == reqwest::StatusCode::OK {
+        let _ = fs::remove_file(&part_path).await;
+        resume_from = 0;
+    } else if resume_from > 0 && status != reqwest::StatusCode::PARTIAL_CONTENT {
+        let _ = fs::remove_file(&part_path).await;
+        resume_from = 0;
+    }
+
+    let response = if resume_from == 0 && status != reqwest::StatusCode::OK {
+        response.error_for_status()?
+    } else if resume_from > 0 && status != reqwest::StatusCode::PARTIAL_CONTENT {
+        client.get(url).send().await?.error_for_status()?
+    } else {
+        response.error_for_status()?
+    };
+
     let mut stream = response.bytes_stream();
-    let mut file = fs::File::create(path).await?;
+    let mut file = if resume_from > 0 {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&part_path)
+            .await?
+    } else {
+        fs::File::create(&part_path).await?
+    };
 
     while let Some(chunk) = stream.next().await {
         file.write_all(&chunk?).await?;
     }
+    file.flush().await?;
+    drop(file);
+
+    fs::rename(&part_path, path).await?;
 
     if !valid_existing(path, sha1, size).await? {
+        let _ = fs::remove_file(path).await;
         return Err(anyhow!(
             "Downloaded file failed validation: {}",
             path.display()
@@ -705,6 +943,14 @@ async fn download_url(
     }
 
     Ok(())
+}
+
+fn partial_path(path: &Path) -> Result<PathBuf> {
+    let file_name = path
+        .file_name()
+        .context("Download path is missing a file name")?
+        .to_string_lossy();
+    Ok(path.with_file_name(format!("{file_name}.part")))
 }
 
 async fn valid_existing(
@@ -857,6 +1103,7 @@ fn expand_game_args(
     username: &str,
     uuid: &str,
     access_token: &str,
+    quick_play_server: Option<&str>,
 ) -> Vec<String> {
     let mut args = Vec::new();
 
@@ -887,6 +1134,11 @@ fn expand_game_args(
             "--versionType".into(),
             "snapshot".into(),
         ]);
+    }
+
+    if let Some(server) = quick_play_server.filter(|server| !server.trim().is_empty()) {
+        args.push("--quickPlayMultiplayer".into());
+        args.push(server.trim().into());
     }
 
     args

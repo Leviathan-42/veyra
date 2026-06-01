@@ -15,9 +15,11 @@ import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 public final class BlockSearchScreen extends Screen {
     private static final int MAX_SUGGESTIONS = 6;
@@ -84,21 +86,22 @@ public final class BlockSearchScreen extends Screen {
             return;
         }
 
-        BlockPos nearest = BlockScan.findClosest(Minecraft.getInstance(), block, 6);
-        BlockTrackerState.setTarget(id, block, nearest);
+        List<Block> targets = oreVariants(id, block);
+        BlockPos nearest = BlockScan.findClosest(Minecraft.getInstance(), targets, BlockScan.DEFAULT_CHUNK_RADIUS);
+        BlockTrackerState.setTarget(id, targets, nearest);
 
         if (nearest == null) {
             status = Component.literal("No matching loaded block found");
             return;
         }
 
-        Minecraft.getInstance().gui.setScreen(null);
+        Minecraft.getInstance().setScreen(null);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (event.key() == InputConstants.KEY_BACKSLASH) {
-            Minecraft.getInstance().gui.setScreen(null);
+            Minecraft.getInstance().setScreen(null);
             return true;
         }
 
@@ -211,6 +214,32 @@ public final class BlockSearchScreen extends Screen {
         }
 
         return Identifier.tryParse(trimmed.contains(":") ? trimmed : "minecraft:" + trimmed);
+    }
+
+    private List<Block> oreVariants(Identifier id, Block block) {
+        Set<Block> variants = new LinkedHashSet<>();
+        variants.add(block);
+
+        if (!"minecraft".equals(id.getNamespace())) {
+            return List.copyOf(variants);
+        }
+
+        String path = id.getPath();
+        String counterpart = null;
+        if (path.endsWith("_ore") && !path.startsWith("deepslate_")) {
+            counterpart = "deepslate_" + path;
+        } else if (path.startsWith("deepslate_") && path.endsWith("_ore")) {
+            counterpart = path.substring("deepslate_".length());
+        }
+
+        if (counterpart != null) {
+            Identifier counterpartId = Identifier.tryParse("minecraft:" + counterpart);
+            if (counterpartId != null) {
+                BuiltInRegistries.BLOCK.getOptional(counterpartId).ifPresent(variants::add);
+            }
+        }
+
+        return List.copyOf(variants);
     }
 
     private void extractSuggestions(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {

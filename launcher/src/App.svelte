@@ -26,6 +26,52 @@
     size_bytes: number;
   };
 
+  type PopularServer = {
+    name: string;
+    ip: string;
+    mode: string;
+    note: string;
+  };
+
+  const popularServers: PopularServer[] = [
+    {
+      name: 'Hypixel',
+      ip: 'mc.hypixel.net',
+      mode: 'Minigames',
+      note: 'Bed Wars, SkyBlock, Duels'
+    },
+    {
+      name: 'DonutSMP',
+      ip: 'donutsmp.net',
+      mode: 'SMP',
+      note: 'Survival economy / PvP'
+    },
+    {
+      name: 'CubeCraft',
+      ip: 'play.cubecraft.net',
+      mode: 'Minigames',
+      note: 'SkyWars, EggWars, parkour'
+    },
+    {
+      name: 'Minehut',
+      ip: 'mc.minehut.com',
+      mode: 'Server Hub',
+      note: 'Community-hosted servers'
+    },
+    {
+      name: 'PikaNetwork',
+      ip: 'play.pika-network.net',
+      mode: 'Network',
+      note: 'SkyBlock, factions, survival'
+    },
+    {
+      name: 'OPBlocks',
+      ip: 'sm.opblocks.com',
+      mode: 'Prison / SkyBlock',
+      note: 'Progression servers'
+    }
+  ];
+
   let account: Account | null = null;
   let versions: VersionChoice[] = [];
   let installedMods: InstalledMod[] = [];
@@ -33,10 +79,11 @@
   let javaPath = 'java';
   let status = 'Ready';
   let modsPath = '';
+  let authPath = '';
   let launchLogs: string[] = [];
   let authBusy = false;
   let launchBusy = false;
-  let activePanel: 'launch' | 'mods' = 'launch';
+  let activePanel: 'launch' | 'mods' | 'servers' = 'launch';
 
   $: canLaunch = !!account && !!selectedVersion && !launchBusy;
 
@@ -59,6 +106,7 @@
     });
 
     try {
+      authPath = await invoke<string>('auth_debug_path');
       account = await invoke<Account | null>('auth_load_saved');
     } catch (error) {
       status = String(error);
@@ -72,8 +120,7 @@
     try {
       versions = await invoke<VersionChoice[]>('list_versions');
       selectedVersion =
-        versions.find((version) => version.id.includes('26.2'))?.id ??
-        versions.find((version) => version.version_type === 'snapshot')?.id ??
+        versions.find((version) => version.version_type === 'release')?.id ??
         versions[0]?.id ??
         '';
       status = 'Ready';
@@ -130,21 +177,33 @@
     await loadMods();
   }
 
-  async function launch() {
+  async function launch(server: PopularServer | null = null) {
     launchBusy = true;
     launchLogs = [];
-    status = `Installing ${selectedVersion}`;
+    status = server ? `Preparing ${server.name}` : `Installing ${selectedVersion}`;
 
     try {
       const result = await invoke<{ pid: number }>('install_and_launch', {
         javaPath,
-        versionId: selectedVersion
+        versionId: selectedVersion,
+        quickPlayServer: server?.ip ?? null
       });
-      status = `Minecraft started with process id ${result.pid}`;
+      status = server
+        ? `Minecraft started for ${server.name} with process id ${result.pid}`
+        : `Minecraft started with process id ${result.pid}`;
     } catch (error) {
       status = String(error);
     } finally {
       launchBusy = false;
+    }
+  }
+
+  async function copyServerIp(server: PopularServer) {
+    try {
+      await navigator.clipboard.writeText(server.ip);
+      status = `Copied ${server.name}: ${server.ip}`;
+    } catch {
+      status = `${server.name}: ${server.ip}`;
     }
   }
 
@@ -160,7 +219,7 @@
     <section class="brand">
       <div class="mark">VY</div>
       <div>
-        <span>Fabric Utility Client</span>
+        <span>Control Layer</span>
         <h1>Veyra</h1>
       </div>
     </section>
@@ -172,11 +231,17 @@
       <button class:active={activePanel === 'mods'} on:click={() => (activePanel = 'mods')}>
         <span>Library</span>
       </button>
+      <button class:active={activePanel === 'servers'} on:click={() => (activePanel = 'servers')}>
+        <span>Servers</span>
+      </button>
     </nav>
 
     <section class="account">
       <span>Microsoft</span>
       <strong>{account?.profile.name ?? 'Offline'}</strong>
+      {#if authPath}
+        <small>{authPath}</small>
+      {/if}
       {#if account}
         <button class="ghost" on:click={signOut}>Sign out</button>
       {:else}
@@ -190,10 +255,10 @@
   <section class="workspace">
     <header class="topbar">
       <div>
-        <span>Runtime</span>
+        <span>Session Status</span>
         <p>{status}</p>
       </div>
-      <button class="launch-button" disabled={!canLaunch} on:click={launch}>
+      <button class="launch-button" disabled={!canLaunch} on:click={() => launch()}>
         {launchBusy ? 'Launching...' : 'Launch Veyra'}
       </button>
     </header>
@@ -204,7 +269,7 @@
           <div class="card-head">
             <div>
               <span>Instance</span>
-              <h2>26.2 Fabric Snapshot</h2>
+              <h2>Veyra Fabric Runtime</h2>
             </div>
             <button class="secondary" on:click={loadVersions}>Refresh</button>
           </div>
@@ -227,22 +292,22 @@
 
           <div class="module-strip">
             <article>
-              <span>Block ESP</span>
-              <strong>Ready</strong>
-            </article>
-            <article>
-              <span>Hitboxes</span>
+              <span>Overlay Suite</span>
               <strong>Right Shift</strong>
             </article>
             <article>
               <span>Renderer</span>
-              <strong>Vulkan-safe</strong>
+              <strong>Sodium + Iris</strong>
+            </article>
+            <article>
+              <span>Launch Stack</span>
+              <strong>Managed</strong>
             </article>
           </div>
         </section>
 
         <section class="side-panel">
-          <span>Profile</span>
+          <span>Active Profile</span>
           <div class="profile-name">{account?.profile.name ?? 'Sign in required'}</div>
           <div class="status-line">
             <b>{installedMods.length}</b>
@@ -261,7 +326,7 @@
           <pre class="log">{launchLogs.length ? launchLogs.join('\n') : 'No launch output yet.'}</pre>
         </section>
       </section>
-    {:else}
+    {:else if activePanel === 'mods'}
       <section class="library-grid">
         <section class="launch-card">
           <div class="card-head">
@@ -292,12 +357,53 @@
         </section>
 
         <section class="side-panel">
-          <span>Veyra Module</span>
+          <span>Veyra Modules</span>
           <div class="module-list">
             <div><b>Search</b><span>\</span></div>
             <div><b>Menu</b><span>Right Shift</span></div>
             <div><b>ESP</b><span>Gizmos</span></div>
           </div>
+        </section>
+      </section>
+    {:else}
+      <section class="servers-grid">
+        <section class="launch-card server-board">
+          <div class="card-head">
+            <div>
+              <span>Quick Servers</span>
+              <h2>Popular Java Servers</h2>
+            </div>
+            <button class="secondary" on:click={() => (activePanel = 'launch')}>Runtime</button>
+          </div>
+
+          <div class="server-list">
+            {#each popularServers as server}
+              <article class="server-card">
+                <div>
+                  <span>{server.mode}</span>
+                  <strong>{server.name}</strong>
+                  <p>{server.note}</p>
+                </div>
+                <code>{server.ip}</code>
+                <div class="server-actions">
+                  <button class="secondary" on:click={() => copyServerIp(server)}>Copy IP</button>
+                  <button class="primary" disabled={!canLaunch} on:click={() => launch(server)}>
+                    Join
+                  </button>
+                </div>
+              </article>
+            {/each}
+          </div>
+        </section>
+
+        <section class="side-panel">
+          <span>How it works</span>
+          <div class="module-list">
+            <div><b>Copy</b><span>IP</span></div>
+            <div><b>Join</b><span>Quick Play</span></div>
+            <div><b>Mods</b><span>Fabric</span></div>
+          </div>
+          <p class="hint">Join launches Minecraft with the selected server address. Server IPs can change, so use Copy IP if Quick Play fails.</p>
         </section>
       </section>
     {/if}

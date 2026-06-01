@@ -7,7 +7,7 @@ mod types;
 use crate::types::{
     AuthCodePayload, AuthStart, InstalledMod, LaunchResult, PublicAccount, VersionChoice,
 };
-use std::process::Command;
+use std::{env, process::Command};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
@@ -90,6 +90,13 @@ async fn auth_load_saved() -> Result<Option<PublicAccount>, String> {
 }
 
 #[tauri::command]
+async fn auth_debug_path() -> Result<String, String> {
+    paths::auth_path()
+        .map(|path| path.display().to_string())
+        .map_err(error::stringify)
+}
+
+#[tauri::command]
 async fn auth_sign_out() -> Result<(), String> {
     auth::sign_out().await.map_err(error::stringify)
 }
@@ -104,8 +111,9 @@ async fn install_and_launch(
     app: tauri::AppHandle,
     java_path: String,
     version_id: String,
+    quick_play_server: Option<String>,
 ) -> Result<LaunchResult, String> {
-    minecraft::install_and_launch(app, java_path, version_id)
+    minecraft::install_and_launch(app, java_path, version_id, quick_play_server)
         .await
         .map_err(error::stringify)
 }
@@ -180,6 +188,8 @@ async fn open_mods_folder() -> Result<(), String> {
 }
 
 pub fn run() {
+    force_linux_webview_x11();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -187,6 +197,7 @@ pub fn run() {
             auth_open_login_window,
             auth_complete_login,
             auth_load_saved,
+            auth_debug_path,
             auth_sign_out,
             list_versions,
             install_and_launch,
@@ -196,4 +207,13 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Veyra Launcher");
+}
+
+fn force_linux_webview_x11() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+
+    env::set_var("GDK_BACKEND", "x11");
+    env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 }

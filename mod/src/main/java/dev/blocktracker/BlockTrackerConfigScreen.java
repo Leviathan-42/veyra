@@ -37,7 +37,7 @@ public final class BlockTrackerConfigScreen extends Screen {
     protected void init() {
         controls.clear();
         panelWidth = Math.min(340, this.width - 28);
-        panelHeight = Math.min(280, this.height - 28);
+        panelHeight = Math.min(390, this.height - 28);
         panelX = (this.width - panelWidth) / 2;
         panelY = (this.height - panelHeight) / 2;
 
@@ -58,9 +58,18 @@ public final class BlockTrackerConfigScreen extends Screen {
         addToggle(x, y, width, "Animals", BlockTrackerState::animalEspEnabled, BlockTrackerState::toggleAnimalEsp);
         y += 25;
         addToggle(x, y, width, "Hostile Mobs", BlockTrackerState::hostileEspEnabled, BlockTrackerState::toggleHostileEsp);
+        y += 31;
+        addToggle(x, y, width, "Stats HUD", BlockTrackerState::statsHudEnabled, BlockTrackerState::toggleStatsHud);
+        y += 25;
+        addToggle(x, y, width, "Waypoints HUD", BlockTrackerState::waypointHudEnabled, BlockTrackerState::toggleWaypointHud);
+        y += 25;
+        addToggle(x, y, width, "Fullbright", BlockTrackerState::fullbrightEnabled, BlockTrackerState::toggleFullbright);
         y += 34;
+        addAction(x, y, (width - 8) / 2, "Add Waypoint", () -> BlockTrackerState.addWaypoint(Minecraft.getInstance()));
+        addAction(x + ((width - 8) / 2) + 8, y, (width - 8) / 2, "Clear Waypoints", BlockTrackerState::clearWaypoints);
+        y += 28;
         addAction(x, y, (width - 8) / 2, "Clear Target", BlockTrackerState::clear);
-        addAction(x + ((width - 8) / 2) + 8, y, (width - 8) / 2, "Done", () -> Minecraft.getInstance().gui.setScreen(null));
+        addAction(x + ((width - 8) / 2) + 8, y, (width - 8) / 2, "Done", () -> Minecraft.getInstance().setScreen(null));
     }
 
     private void addToggle(int x, int y, int width, String label, BooleanSupplier state, Runnable action) {
@@ -74,7 +83,7 @@ public final class BlockTrackerConfigScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (event.key() == InputConstants.KEY_RSHIFT) {
-            Minecraft.getInstance().gui.setScreen(null);
+            Minecraft.getInstance().setScreen(null);
             return true;
         }
 

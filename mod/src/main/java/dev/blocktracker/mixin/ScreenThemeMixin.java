@@ -1,10 +1,8 @@
 package dev.blocktracker.mixin;
 
 import dev.blocktracker.VeyraUi;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -20,16 +18,11 @@ public abstract class ScreenThemeMixin {
     public int height;
 
     @Shadow
-    @Final
-    protected Minecraft minecraft;
-
-    @Shadow
     public abstract boolean isInGameUi();
 
     @Inject(method = "extractBackground", at = @At("HEAD"), cancellable = true)
     private void veyra$extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         VeyraUi.screenBackground(graphics, width, height, isInGameUi());
-        minecraft.gui.hud.extractDeferredSubtitles();
         ci.cancel();
     }
 }

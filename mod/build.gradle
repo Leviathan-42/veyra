@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id 'java'
 }
@@ -9,21 +11,53 @@ base {
     archivesName = project.archives_base_name
 }
 
-def launcherDir = file("${System.getenv('APPDATA')}/VeyraLauncher")
-def legacyLauncherDir = file("${System.getenv('APPDATA')}/BlockTrackerLauncher")
+def resolveDataDir = {
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('win')) {
+        def appData = System.getenv('APPDATA')
+        if (appData) return file(appData)
+    }
+
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('mac')) {
+        return file("${System.getProperty('user.home')}/Library/Application Support")
+    }
+
+    def xdgDataHome = System.getenv('XDG_DATA_HOME')
+    if (xdgDataHome) return file(xdgDataHome)
+
+    return file("${System.getProperty('user.home')}/.local/share")
+}
+
+def dataDir = project.hasProperty('veyraDataDir') ? file(project.property('veyraDataDir')) : resolveDataDir()
+def launcherDir = file("${dataDir}/VeyraLauncher")
+def legacyLauncherDir = file("${dataDir}/BlockTrackerLauncher")
 def minecraftDir = file("${launcherDir.exists() ? launcherDir : legacyLauncherDir}/minecraft")
 def minecraftJar = file("${minecraftDir}/versions/${minecraft_version}/${minecraft_version}.jar")
+def versionJson = file("${minecraftDir}/versions/${minecraft_version}/${minecraft_version}.json")
 def libraryJars = fileTree("${minecraftDir}/libraries") {
     include '**/*.jar'
 }
 
 repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://libraries.minecraft.net/' }
     mavenCentral()
+}
+
+def minecraftLibraries = []
+if (versionJson.exists()) {
+    def parsed = new JsonSlurper().parse(versionJson)
+    minecraftLibraries = parsed.libraries
+            .collect { it.name as String }
+            .findAll { it.count(':') == 2 }
+            .unique()
 }
 
 dependencies {
     compileOnly files(minecraftJar)
     compileOnly libraryJars
+    minecraftLibraries.each { compileOnly it }
+    compileOnly "net.fabricmc:fabric-loader:${loader_version}"
+    compileOnly "net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7"
 }
 
 processResources {
@@ -35,6 +69,11 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
+    doFirst {
+        if (!minecraftJar.exists() || !versionJson.exists()) {
+            throw new GradleException("Minecraft ${minecraft_version} is not installed at ${minecraftDir}. Launch that exact version from Veyra once, then run gradle build again.")
+        }
+    }
     options.release = 25
 }
 

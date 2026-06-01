@@ -5,6 +5,7 @@
   "client": [
     "AbstractButtonThemeMixin",
     "HudMixin",
+    "LightmapRenderStateExtractorMixin",
     "MinecraftClientMixin",
     "ScreenThemeMixin",
     "TitleScreenThemeMixin"

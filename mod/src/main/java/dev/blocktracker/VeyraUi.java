@@ -29,6 +29,27 @@ public final class VeyraUi {
         }
     }
 
+    public static void titleBackground(GuiGraphicsExtractor graphics, int width, int height) {
+        graphics.fill(0, 0, width, height, 0xFF080A0D);
+        graphics.fill(0, 0, width, height, 0x44000000);
+        graphics.fill(0, 0, width, 34, 0xE60C1117);
+        graphics.fill(0, height - 4, width, height, 0xA04AA3A6);
+        graphics.fill(0, 0, 6, height, 0xD04AA3A6);
+        graphics.fill(6, 0, 11, height, 0xD0FFC857);
+        graphics.fill(width - 5, 0, width, height, 0x8042A08B);
+
+        int grid = 36;
+        for (int x = 11; x < width; x += grid) {
+            graphics.fill(x, 34, x + 1, height - 4, 0x18182024);
+        }
+        for (int y = 34; y < height; y += grid) {
+            graphics.fill(11, y, width - 5, y + 1, 0x18182024);
+        }
+
+        graphics.fill(width / 2 - 170, 74, width / 2 + 170, 76, 0x8042A08B);
+        graphics.fill(width / 2 - 90, 80, width / 2 + 90, 82, 0x80FFC857);
+    }
+
     public static void button(GuiGraphicsExtractor graphics, int x, int y, int width, int height, boolean active, boolean highlighted) {
         int fill = !active ? SURFACE_DISABLED : highlighted ? SURFACE_HOVER : SURFACE;
         int edge = !active ? 0x60687984 : highlighted ? ACCENT : EDGE;

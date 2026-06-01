@@ -354,15 +354,22 @@ async fn minecraft_login(
 
 async fn save_account(account: &Account) -> Result<()> {
     fs::create_dir_all(paths::app_dir()?).await?;
-    Entry::new(KEYRING_SERVICE, KEYRING_USER)?.set_password(&account.refresh_token)?;
 
-    let mut public_copy = account.clone();
-    public_copy.refresh_token.clear();
-    fs::write(
-        paths::auth_path()?,
-        serde_json::to_vec_pretty(&public_copy)?,
-    )
-    .await?;
+    let _ = Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .and_then(|entry| entry.set_password(&account.refresh_token));
+
+    let auth_path = paths::auth_path()?;
+    fs::write(&auth_path, serde_json::to_vec_pretty(account)?)
+        .await
+        .with_context(|| format!("Failed to write account file at {}", auth_path.display()))?;
+
+    if !auth_path.exists() {
+        return Err(anyhow!(
+            "Account save reported success, but no account file exists at {}",
+            auth_path.display()
+        ));
+    }
+
     Ok(())
 }
 
@@ -372,11 +379,15 @@ async fn read_account() -> Result<Option<Account>> {
         return Ok(None);
     }
 
-    let mut account: Account = serde_json::from_slice(&fs::read(path).await?)?;
+    let mut account: Account = serde_json::from_slice(&fs::read(&path).await?)?;
     if account.refresh_token.is_empty() {
-        account.refresh_token = Entry::new(KEYRING_SERVICE, KEYRING_USER)?
-            .get_password()
-            .context("Saved account exists, but no refresh token was found in the OS keychain")?;
+        match Entry::new(KEYRING_SERVICE, KEYRING_USER)?.get_password() {
+            Ok(refresh_token) => account.refresh_token = refresh_token,
+            Err(_) => {
+                let _ = fs::remove_file(&path).await;
+                return Ok(None);
+            }
+        }
     }
 
     Ok(Some(account))

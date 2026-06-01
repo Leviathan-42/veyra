@@ -6,15 +6,23 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 
+import java.util.Collection;
+
 public final class BlockScan {
+    public static final int DEFAULT_CHUNK_RADIUS = 12;
+
     private BlockScan() {
     }
 
     public static BlockPos findClosest(Minecraft client, Block target, int chunkRadius) {
+        return findClosest(client, java.util.List.of(target), chunkRadius);
+    }
+
+    public static BlockPos findClosest(Minecraft client, Collection<Block> targets, int chunkRadius) {
         Player player = client.player;
         Level level = client.level;
 
-        if (player == null || level == null) {
+        if (player == null || level == null || targets.isEmpty()) {
             return null;
         }
 
@@ -33,7 +41,7 @@ public final class BlockScan {
 
                 for (int y = level.getMinY(); y < level.getMaxY(); y++) {
                     cursor.set(x, y, z);
-                    if (!level.getBlockState(cursor).is(target)) {
+                    if (!targets.stream().anyMatch(target -> level.getBlockState(cursor).is(target))) {
                         continue;
                     }
 
