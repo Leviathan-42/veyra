@@ -8,6 +8,7 @@
     "CrosshairMixin",
     "FreecamCameraMixin",
     "FreecamInputMixin",
+    "FreecamMouseMixin",
     "HudMixin",
     "LightmapRenderStateExtractorMixin",
     "MinecraftClientMixin",

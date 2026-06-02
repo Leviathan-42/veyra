@@ -28,6 +28,6 @@ public abstract class FreecamCameraMixin {
 
         CameraAccessor accessor = (CameraAccessor) this;
         accessor.veyra$setPosition(position);
-        accessor.veyra$setRotation(client.player.getYRot(), client.player.getXRot());
+        accessor.veyra$setRotation(VeyraFreecam.yaw(), VeyraFreecam.pitch());
     }
 }

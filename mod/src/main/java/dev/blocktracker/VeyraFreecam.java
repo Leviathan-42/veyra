@@ -10,8 +10,9 @@ public final class VeyraFreecam {
     private static boolean enabled;
     private static boolean cWasDown;
     private static Vec3 position;
-    private static Vec3 frozenPlayerPosition;
     private static CameraType previousCameraType;
+    private static float yaw;
+    private static float pitch;
     private static boolean forward;
     private static boolean backward;
     private static boolean left;
@@ -29,6 +30,25 @@ public final class VeyraFreecam {
 
     public static Vec3 position() {
         return position;
+    }
+
+    public static float yaw() {
+        return yaw;
+    }
+
+    public static float pitch() {
+        return pitch;
+    }
+
+    public static void turn(double x, double y) {
+        yaw += (float) x * 0.15F;
+        pitch += (float) y * 0.15F;
+        if (pitch < -90.0F) {
+            pitch = -90.0F;
+        }
+        if (pitch > 90.0F) {
+            pitch = 90.0F;
+        }
     }
 
     public static void tick(Minecraft client, boolean cDown) {
@@ -52,7 +72,7 @@ public final class VeyraFreecam {
         }
 
         readFreecamKeys(client);
-        freezePlayer(client);
+        cancelPlayerMovementInput(client);
         unbindMovementKeys(client);
     }
 
@@ -67,7 +87,7 @@ public final class VeyraFreecam {
 
         double speedPerTick = fast ? 0.82D : 0.38D;
         double speed = speedPerTick * Math.max(0.0F, Math.min(deltaTicks, 3.0F));
-        double yaw = Math.toRadians(client.player.getYRot());
+        double yaw = Math.toRadians(VeyraFreecam.yaw);
         double forwardX = -Math.sin(yaw);
         double forwardZ = Math.cos(yaw);
         double rightX = -Math.cos(yaw);
@@ -108,7 +128,8 @@ public final class VeyraFreecam {
     private static void enable(Minecraft client) {
         enabled = true;
         position = client.player == null ? null : client.player.getEyePosition();
-        frozenPlayerPosition = client.player == null ? null : client.player.position();
+        yaw = client.player.getYRot();
+        pitch = client.player.getXRot();
         previousCameraType = client.options.getCameraType();
         client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
     }
@@ -119,8 +140,9 @@ public final class VeyraFreecam {
         }
         enabled = false;
         position = null;
-        frozenPlayerPosition = null;
         previousCameraType = null;
+        yaw = 0.0F;
+        pitch = 0.0F;
         forward = false;
         backward = false;
         left = false;
@@ -151,15 +173,11 @@ public final class VeyraFreecam {
         client.options.keySprint.setDown(false);
     }
 
-    private static void freezePlayer(Minecraft client) {
+    private static void cancelPlayerMovementInput(Minecraft client) {
         if (client.player == null) {
             return;
         }
 
         client.player.input.keyPresses = Input.EMPTY;
-        client.player.setDeltaMovement(Vec3.ZERO);
-        if (frozenPlayerPosition != null) {
-            client.player.setPos(frozenPlayerPosition);
-        }
     }
 }
