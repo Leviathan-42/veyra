@@ -39,27 +39,27 @@ public abstract class TitleScreenThemeMixin extends Screen {
         int y = panelY + panelHeight - bottomPadding - totalButtonsHeight;
         y = Math.max(panelY + 76, y);
 
-        addRenderableWidget(Button.builder(Component.literal("Singleplayer"), button ->
+        addRenderableWidget(Button.builder(VeyraUi.component("Singleplayer"), button ->
                 this.minecraft.setScreen(new SelectWorldScreen(this)))
                 .bounds(left, y, buttonWidth, buttonHeight)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Multiplayer"), button ->
+        addRenderableWidget(Button.builder(VeyraUi.component("Multiplayer"), button ->
                 this.minecraft.setScreen(new JoinMultiplayerScreen(this)))
                 .bounds(left, y + 29, buttonWidth, buttonHeight)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Veyra Search"), button ->
+        addRenderableWidget(Button.builder(VeyraUi.component("Veyra Search"), button ->
                 this.minecraft.setScreen(new BlockSearchScreen()))
                 .bounds(left, y + 58, buttonWidth, buttonHeight)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Veyra Settings"), button ->
+        addRenderableWidget(Button.builder(VeyraUi.component("Veyra Settings"), button ->
                 this.minecraft.setScreen(new BlockTrackerConfigScreen()))
                 .bounds(left, y + 87, buttonWidth, buttonHeight)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Options"), button ->
+        addRenderableWidget(Button.builder(VeyraUi.component("Options"), button ->
                 this.minecraft.setScreen(new OptionsScreen(this, this.minecraft.options, false)))
                 .bounds(left, y + 120, (buttonWidth - 8) / 2, 22)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Quit"), button -> this.minecraft.stop())
+        addRenderableWidget(Button.builder(VeyraUi.component("Quit"), button -> this.minecraft.stop())
                 .bounds(left + ((buttonWidth - 8) / 2) + 8, y + 120, (buttonWidth - 8) / 2, 22)
                 .build());
 
@@ -81,20 +81,17 @@ public abstract class TitleScreenThemeMixin extends Screen {
         int x = (this.width - panelWidth) / 2;
         int y = Math.max(12, (this.height - panelHeight) / 2);
 
-        graphics.fill(x, y, x + panelWidth, y + panelHeight, VeyraUi.PANEL);
-        graphics.outline(x, y, panelWidth, panelHeight, VeyraUi.EDGE);
-        graphics.fill(x, y, x + 5, y + panelHeight, VeyraUi.TEAL);
-        graphics.fill(x + 5, y, x + 9, y + panelHeight, VeyraUi.ACCENT);
+        VeyraUi.panel(graphics, x, y, panelWidth, panelHeight);
 
-        graphics.text(this.font, "VEYRA", x + 24, y + 18, VeyraUi.ACCENT);
-        graphics.text(this.font, "Aperture Fabric Utility Client", x + 24, y + 34, 0xFFF1F6F7);
-        graphics.text(this.font, "optimized renderer  |  iris ready  |  local overlays", x + 24, y + 50, 0xFF93A8AE);
+        VeyraUi.text(graphics, this.font, "Veyra", x + 24, y + 18, 0xFFF4F7FA);
+        VeyraUi.text(graphics, this.font, "Fabric utility client", x + 24, y + 35, 0xFF8B96A5);
+        VeyraUi.text(graphics, this.font, "Vulkan renderer  /  local overlays  /  clean UI", x + 24, y + 51, 0xFF6B7280);
 
         int statusX = x + 24;
         int statusY = y + panelHeight - 34;
-        graphics.fill(statusX, statusY, x + panelWidth - 24, statusY + 18, 0x99151D26);
-        graphics.outline(statusX, statusY, panelWidth - 48, 18, 0x804AA3A6);
-        graphics.text(this.font, "Right Shift: Veyra in-game controls", statusX + 8, statusY + 5, 0xFFB9D7FF);
+        graphics.fill(statusX, statusY, x + panelWidth - 24, statusY + 18, VeyraUi.SURFACE);
+        graphics.outline(statusX, statusY, panelWidth - 48, 18, VeyraUi.EDGE);
+        VeyraUi.text(graphics, this.font, "Right Shift opens in-game controls", statusX + 8, statusY + 5, 0xFF8B96A5);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         ci.cancel();

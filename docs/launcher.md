@@ -64,7 +64,7 @@ Refresh tokens are stored through the OS keyring when possible, with account met
 1. Load/refresh account.
 2. Create the launcher game directory.
 3. Sync local development Veyra mod jar if built.
-4. Download compatible Fabric performance/Iris mods from Modrinth when available.
+4. Download compatible Fabric/VulkanMod client mods from Modrinth when available.
 5. Download selected Minecraft version metadata/client jar.
 5. Download libraries/assets/natives.
 6. Install Fabric loader/runtime libraries.
@@ -87,11 +87,15 @@ it is copied into the launcher's managed `mods/` folder before launch. Old `bloc
 On launch, Veyra tries to install compatible Fabric builds for the selected Minecraft version:
 
 - Fabric API
-- Sodium
+- VulkanMod
 - Lithium
 - FerriteCore
 - EntityCulling
-- ImmediatelyFast
-- Iris Shaders
+- ModernFix
+- Cloth Config API
+- Noisium
+- Krypton
+
+Veyra intentionally does not install Sodium, Iris Shaders, ImmediatelyFast, More Culling, Enhanced Block Entities, or Dynamic FPS because those are listed as incompatible or visually broken with VulkanMod.
 
 If Modrinth has no compatible build for a selected version, the launcher logs a skip and continues launching.

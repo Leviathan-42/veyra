@@ -112,10 +112,21 @@ async fn install_and_launch(
     java_path: String,
     version_id: String,
     quick_play_server: Option<String>,
+    window_width: Option<u32>,
+    window_height: Option<u32>,
+    fullscreen: Option<bool>,
 ) -> Result<LaunchResult, String> {
-    minecraft::install_and_launch(app, java_path, version_id, quick_play_server)
-        .await
-        .map_err(error::stringify)
+    minecraft::install_and_launch(
+        app,
+        java_path,
+        version_id,
+        quick_play_server,
+        window_width,
+        window_height,
+        fullscreen,
+    )
+    .await
+    .map_err(error::stringify)
 }
 
 #[tauri::command]

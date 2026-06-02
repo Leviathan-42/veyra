@@ -15,25 +15,22 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 
 public final class BlockTrackerRenderer {
-    private static final int BOX_STROKE = 0xF04DA3FF;
-    private static final int BOX_FILL = 0x264DA3FF;
-    private static final int LINE_COLOR = 0xF000FF66;
-    private static final int LABEL_COLOR = 0xFFFFFFFF;
-    private static final int PLAYER_STROKE = 0xF044E07A;
-    private static final int PLAYER_FILL = 0x2444E07A;
-    private static final int ANIMAL_STROKE = 0xF0FFB84D;
-    private static final int ANIMAL_FILL = 0x24FFB84D;
-    private static final int HOSTILE_STROKE = 0xF0FF4D6D;
-    private static final int HOSTILE_FILL = 0x24FF4D6D;
+    private static final int BOX_STROKE = 0xF0FFC857;
+    private static final int LINE_COLOR = 0xF0FFC857;
+    private static final int PLAYER_STROKE = 0xF05EEAD4;
+    private static final int ANIMAL_STROKE = 0xF0A7F3D0;
+    private static final int HOSTILE_STROKE = 0xF0FB7185;
     private static final int WAYPOINT_COLOR = 0xF0FFC857;
-    private static final int DEATH_COLOR = 0xF0FF4D6D;
+    private static final int DEATH_COLOR = 0xF0FB7185;
     private static final double ENTITY_ESP_RANGE_SQ = 128.0D * 128.0D;
     private static final int MAX_ENTITY_BOXES = 96;
 
-    private static final GizmoStyle BOX_STYLE = GizmoStyle.strokeAndFill(BOX_STROKE, 3.0F, BOX_FILL);
-    private static final GizmoStyle PLAYER_STYLE = GizmoStyle.strokeAndFill(PLAYER_STROKE, 2.0F, PLAYER_FILL);
-    private static final GizmoStyle ANIMAL_STYLE = GizmoStyle.strokeAndFill(ANIMAL_STROKE, 2.0F, ANIMAL_FILL);
-    private static final GizmoStyle HOSTILE_STYLE = GizmoStyle.strokeAndFill(HOSTILE_STROKE, 2.0F, HOSTILE_FILL);
+    private static final GizmoStyle BOX_STYLE = GizmoStyle.stroke(BOX_STROKE, 2.0F);
+    private static final GizmoStyle PLAYER_STYLE = GizmoStyle.stroke(PLAYER_STROKE, 2.0F);
+    private static final GizmoStyle ANIMAL_STYLE = GizmoStyle.stroke(ANIMAL_STROKE, 2.0F);
+    private static final GizmoStyle HOSTILE_STYLE = GizmoStyle.stroke(HOSTILE_STROKE, 2.0F);
+    private static final GizmoStyle WAYPOINT_STYLE = GizmoStyle.stroke(WAYPOINT_COLOR, 2.0F);
+    private static final GizmoStyle DEATH_STYLE = GizmoStyle.stroke(DEATH_COLOR, 2.0F);
 
     private BlockTrackerRenderer() {
     }
@@ -65,8 +62,6 @@ public final class BlockTrackerRenderer {
         if (BlockTrackerState.blockEspEnabled()) {
             Gizmos.cuboid(targetPos, BOX_STYLE)
                     .setAlwaysOnTop();
-            Gizmos.billboardTextOverBlock(targetId.toString(), targetPos, 0, LABEL_COLOR, 0.45F)
-                    .setAlwaysOnTop();
         }
 
         if (!BlockTrackerState.tracerEnabled()) {
@@ -93,13 +88,13 @@ public final class BlockTrackerRenderer {
                 continue;
             }
 
-            Gizmos.billboardTextOverBlock(waypoint.name(), pos, 1, WAYPOINT_COLOR, 0.55F)
+            Gizmos.cuboid(pos, WAYPOINT_STYLE)
                     .setAlwaysOnTop();
         }
 
         BlockPos death = BlockTrackerState.deathMarker();
         if (death != null && level.hasChunkAt(death)) {
-            Gizmos.billboardTextOverBlock("Death", death, 1, DEATH_COLOR, 0.6F)
+            Gizmos.cuboid(death, DEATH_STYLE)
                     .setAlwaysOnTop();
         }
     }

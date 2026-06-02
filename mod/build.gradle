@@ -79,6 +79,8 @@ tasks.withType(JavaCompile).configureEach {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        // Build with the current Homebrew OpenJDK while still emitting Java 25 bytecode
+        // through options.release above.
+        languageVersion = JavaLanguageVersion.of(26)
     }
 }

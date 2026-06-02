@@ -360,9 +360,19 @@ label span,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.fields.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 label {
   display: grid;
   gap: 8px;
+}
+
+.check-field input {
+  width: 46px;
+  justify-self: start;
+  accent-color: var(--blue);
 }
 
 input,

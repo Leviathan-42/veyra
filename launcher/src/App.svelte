@@ -76,7 +76,10 @@
   let versions: VersionChoice[] = [];
   let installedMods: InstalledMod[] = [];
   let selectedVersion = '';
-  let javaPath = 'java';
+  let javaPath = '/opt/homebrew/opt/java/bin/java';
+  let windowWidth = 1920;
+  let windowHeight = 1080;
+  let fullscreen = true;
   let status = 'Ready';
   let modsPath = '';
   let authPath = '';
@@ -186,7 +189,10 @@
       const result = await invoke<{ pid: number }>('install_and_launch', {
         javaPath,
         versionId: selectedVersion,
-        quickPlayServer: server?.ip ?? null
+        quickPlayServer: server?.ip ?? null,
+        windowWidth,
+        windowHeight,
+        fullscreen
       });
       status = server
         ? `Minecraft started for ${server.name} with process id ${result.pid}`
@@ -290,6 +296,23 @@
             </label>
           </div>
 
+          <div class="fields three">
+            <label>
+              <span>Render Width</span>
+              <input type="number" min="640" max="7680" bind:value={windowWidth} />
+            </label>
+
+            <label>
+              <span>Render Height</span>
+              <input type="number" min="360" max="4320" bind:value={windowHeight} />
+            </label>
+
+            <label class="check-field">
+              <span>Fullscreen</span>
+              <input type="checkbox" bind:checked={fullscreen} />
+            </label>
+          </div>
+
           <div class="module-strip">
             <article>
               <span>Overlay Suite</span>
@@ -297,7 +320,7 @@
             </article>
             <article>
               <span>Renderer</span>
-              <strong>Sodium + Iris</strong>
+              <strong>VulkanMod</strong>
             </article>
             <article>
               <span>Launch Stack</span>

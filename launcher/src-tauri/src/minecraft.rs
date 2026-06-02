@@ -11,7 +11,7 @@ use std::{
     fs::File,
     io::Cursor,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Command as StdCommand, Stdio},
 };
 use tauri::{AppHandle, Emitter};
 use tokio::{
@@ -23,33 +23,11 @@ use tokio::{
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
 const MANAGED_MODS: &[ManagedMod] = &[
+    // Keep the Vulkan profile lean. VulkanMod is a renderer replacement, so
+    // renderer/chunk/culling/network optimization mods can fight it or waste FPS.
     ManagedMod {
-        slug: "fabric-api",
-        label: "Fabric API",
-    },
-    ManagedMod {
-        slug: "sodium",
-        label: "Sodium",
-    },
-    ManagedMod {
-        slug: "lithium",
-        label: "Lithium",
-    },
-    ManagedMod {
-        slug: "ferrite-core",
-        label: "FerriteCore",
-    },
-    ManagedMod {
-        slug: "entityculling",
-        label: "EntityCulling",
-    },
-    ManagedMod {
-        slug: "immediatelyfast",
-        label: "ImmediatelyFast",
-    },
-    ManagedMod {
-        slug: "iris",
-        label: "Iris Shaders",
+        slug: "vulkanmod",
+        label: "VulkanMod",
     },
 ];
 
@@ -324,11 +302,39 @@ pub async fn list_versions() -> Result<Vec<VersionChoice>> {
         .collect())
 }
 
+fn resolve_java_path(java_path: &str) -> String {
+    let trimmed = java_path.trim();
+    if !trimmed.is_empty() && trimmed != "java" {
+        return trimmed.to_string();
+    }
+
+    let homebrew_java = Path::new("/opt/homebrew/opt/java/bin/java");
+    if homebrew_java.exists() {
+        return homebrew_java.display().to_string();
+    }
+
+    if cfg!(target_os = "macos") {
+        if let Ok(output) = StdCommand::new("/usr/libexec/java_home").args(["-v", "26"]).output() {
+            if output.status.success() {
+                let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !home.is_empty() {
+                    return format!("{home}/bin/java");
+                }
+            }
+        }
+    }
+
+    "java".to_string()
+}
+
 pub async fn install_and_launch(
     app: AppHandle,
     java_path: String,
     version_id: String,
     quick_play_server: Option<String>,
+    window_width: Option<u32>,
+    window_height: Option<u32>,
+    fullscreen: Option<bool>,
 ) -> Result<LaunchResult> {
     let account = auth::launch_account().await?;
     let game_dir = paths::game_dir()?;
@@ -366,16 +372,25 @@ pub async fn install_and_launch(
         &account.access_token,
         quick_play_server.as_deref(),
     ));
+    append_resolution_args(
+        &mut args,
+        window_width,
+        window_height,
+        fullscreen.unwrap_or(false),
+    );
 
+    let resolved_java_path = resolve_java_path(&java_path);
     app.emit("launcher-status", "Starting Minecraft").ok();
-    let child = Command::new(java_path)
+    app.emit("launch-log", format!("Using Java: {resolved_java_path}"))
+        .ok();
+    let child = Command::new(&resolved_java_path)
         .args(args)
         .current_dir(&game_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("Failed to spawn Java. Check that Java 21+ is installed and on PATH.")?;
+        .with_context(|| format!("Failed to spawn Java at {resolved_java_path}. Check that Java 25+ is installed."))?;
 
     let pid = child.id().unwrap_or_default();
     stream_child_output(&app, child, pid);
@@ -415,12 +430,21 @@ async fn remove_old_managed_client_mods(mods_dir: &Path) -> Result<()> {
 
         let file_name = entry.file_name().to_string_lossy().to_lowercase();
         let managed = file_name.starts_with("fabric-api-")
+            || file_name.starts_with("vulkanmod-")
+            || file_name.starts_with("vulkanmod_")
             || file_name.starts_with("sodium-fabric-")
             || file_name.starts_with("lithium-fabric-")
             || file_name.starts_with("iris-fabric-")
             || file_name.starts_with("ferritecore-")
             || file_name.starts_with("entityculling-fabric-")
-            || file_name.starts_with("immediatelyfast-fabric-");
+            || file_name.starts_with("immediatelyfast-fabric-")
+            || file_name.starts_with("modernfix-fabric-")
+            || file_name.starts_with("cloth-config-")
+            || file_name.starts_with("moreculling-")
+            || file_name.starts_with("enhancedblockentities-")
+            || file_name.starts_with("noisium-")
+            || file_name.starts_with("krypton-")
+            || file_name.starts_with("dynamic-fps-");
 
         if managed {
             fs::remove_file(path).await?;
@@ -1094,6 +1118,8 @@ fn expand_jvm_args(
         args.push(classpath.to_string());
     }
 
+    args.retain(|arg| arg != "--sun-misc-unsafe-memory-access=allow");
+
     args
 }
 
@@ -1142,6 +1168,26 @@ fn expand_game_args(
     }
 
     args
+}
+
+fn append_resolution_args(
+    args: &mut Vec<String>,
+    window_width: Option<u32>,
+    window_height: Option<u32>,
+    fullscreen: bool,
+) {
+    if let (Some(width), Some(height)) = (window_width, window_height) {
+        if (640..=7680).contains(&width) && (360..=4320).contains(&height) {
+            args.push("--width".into());
+            args.push(width.to_string());
+            args.push("--height".into());
+            args.push(height.to_string());
+        }
+    }
+
+    if fullscreen {
+        args.push("--fullscreen".into());
+    }
 }
 
 fn append_argument<F>(value: &serde_json::Value, args: &mut Vec<String>, replace: F)

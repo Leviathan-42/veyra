@@ -13,76 +13,108 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public final class BlockTrackerConfigScreen extends Screen {
-    private static final int PANEL_COLOR = 0xE60C1117;
-    private static final int PANEL_EDGE = 0xB04AA3A6;
-    private static final int BUTTON_COLOR = 0xCC151D26;
-    private static final int BUTTON_HOVER = 0xE6203542;
-    private static final int BUTTON_ON = 0xD9287A62;
-    private static final int BUTTON_OFF = 0xD936414E;
-    private static final int TEXT = 0xFFF1F6F7;
-    private static final int MUTED = 0xFF93A8AE;
-    private static final int ACCENT = 0xFFFFC857;
+    private static final int TEXT = 0xFFF4F7FA;
+    private static final int MUTED = 0xFF8B96A5;
+    private static final int SUBTLE = 0xFF5F6B7A;
+    private static final int ACTIVE = 0xFF7DD3FC;
+    private static final int GOOD = 0xFF5EEAD4;
+    private static final int BAD = 0xFFFB7185;
 
     private final List<MenuControl> controls = new ArrayList<>();
+    private final List<TabControl> tabs = new ArrayList<>();
+    private Tab activeTab = Tab.BLOCKS;
+    private long openedAt;
     private int panelX;
     private int panelY;
     private int panelWidth;
     private int panelHeight;
+    private int currentOffsetY;
 
     public BlockTrackerConfigScreen() {
         super(Component.literal("Veyra"));
+        openedAt = System.currentTimeMillis();
     }
 
     @Override
     protected void init() {
-        controls.clear();
-        panelWidth = Math.min(340, this.width - 28);
-        panelHeight = Math.min(390, this.height - 28);
+        panelWidth = Math.min(560, this.width - 28);
+        panelHeight = Math.min(330, this.height - 28);
         panelX = (this.width - panelWidth) / 2;
         panelY = (this.height - panelHeight) / 2;
+        rebuildLayout();
+    }
 
-        int x = panelX + 16;
-        int y = panelY + 58;
-        int width = panelWidth - 32;
+    private void rebuildLayout() {
+        controls.clear();
+        tabs.clear();
 
-        addToggle(x, y, width, "Block ESP", BlockTrackerState::blockEspEnabled, BlockTrackerState::toggleBlockEsp);
-        y += 25;
-        addToggle(x, y, width, "Tracer", BlockTrackerState::tracerEnabled, BlockTrackerState::toggleTracer);
-        y += 25;
-        addToggle(x, y, width, "Top HUD", BlockTrackerState::hudLabelEnabled, BlockTrackerState::toggleHudLabel);
-        y += 33;
-        addToggle(x, y, width, "Entity Hitboxes", BlockTrackerState::entityEspEnabled, BlockTrackerState::toggleEntityEsp);
-        y += 25;
-        addToggle(x, y, width, "Players", BlockTrackerState::playerEspEnabled, BlockTrackerState::togglePlayerEsp);
-        y += 25;
-        addToggle(x, y, width, "Animals", BlockTrackerState::animalEspEnabled, BlockTrackerState::toggleAnimalEsp);
-        y += 25;
-        addToggle(x, y, width, "Hostile Mobs", BlockTrackerState::hostileEspEnabled, BlockTrackerState::toggleHostileEsp);
-        y += 31;
-        addToggle(x, y, width, "Stats HUD", BlockTrackerState::statsHudEnabled, BlockTrackerState::toggleStatsHud);
-        y += 25;
-        addToggle(x, y, width, "Waypoints HUD", BlockTrackerState::waypointHudEnabled, BlockTrackerState::toggleWaypointHud);
-        y += 25;
-        addToggle(x, y, width, "Fullbright", BlockTrackerState::fullbrightEnabled, BlockTrackerState::toggleFullbright);
-        y += 34;
-        addAction(x, y, (width - 8) / 2, "Add Waypoint", () -> BlockTrackerState.addWaypoint(Minecraft.getInstance()));
-        addAction(x + ((width - 8) / 2) + 8, y, (width - 8) / 2, "Clear Waypoints", BlockTrackerState::clearWaypoints);
-        y += 28;
-        addAction(x, y, (width - 8) / 2, "Clear Target", BlockTrackerState::clear);
-        addAction(x + ((width - 8) / 2) + 8, y, (width - 8) / 2, "Done", () -> Minecraft.getInstance().setScreen(null));
+        int navX = panelX + 16;
+        int navY = panelY + 64;
+        int navWidth = 132;
+        int tabHeight = 28;
+        for (Tab tab : Tab.values()) {
+            tabs.add(new TabControl(navX, navY, navWidth, tabHeight, tab));
+            navY += tabHeight + 8;
+        }
+
+        int contentX = panelX + 168;
+        int contentY = panelY + 70;
+        int contentWidth = panelWidth - 192;
+        int half = (contentWidth - 10) / 2;
+
+        switch (activeTab) {
+            case BLOCKS -> {
+                addToggle(contentX, contentY, half, "Block ESP", BlockTrackerState::blockEspEnabled, BlockTrackerState::toggleBlockEsp);
+                addToggle(contentX + half + 10, contentY, half, "Tracer", BlockTrackerState::tracerEnabled, BlockTrackerState::toggleTracer);
+                contentY += 38;
+                addToggle(contentX, contentY, half, "Top HUD", BlockTrackerState::hudLabelEnabled, BlockTrackerState::toggleHudLabel);
+                addAction(contentX + half + 10, contentY, half, "Clear Target", BlockTrackerState::clear);
+            }
+            case ENTITIES -> {
+                addToggle(contentX, contentY, contentWidth, "Entity Hitboxes", BlockTrackerState::entityEspEnabled, BlockTrackerState::toggleEntityEsp);
+                contentY += 38;
+                addToggle(contentX, contentY, half, "Players", BlockTrackerState::playerEspEnabled, BlockTrackerState::togglePlayerEsp);
+                addToggle(contentX + half + 10, contentY, half, "Animals", BlockTrackerState::animalEspEnabled, BlockTrackerState::toggleAnimalEsp);
+                contentY += 38;
+                addToggle(contentX, contentY, half, "Hostile Mobs", BlockTrackerState::hostileEspEnabled, BlockTrackerState::toggleHostileEsp);
+            }
+            case WAYPOINTS -> {
+                addToggle(contentX, contentY, contentWidth, "Waypoints HUD", BlockTrackerState::waypointHudEnabled, BlockTrackerState::toggleWaypointHud);
+                contentY += 38;
+                addAction(contentX, contentY, half, "Add Here", () -> BlockTrackerState.addWaypoint(Minecraft.getInstance()));
+                addAction(contentX + half + 10, contentY, half, "Mark Look", () -> BlockTrackerState.addLookWaypoint(Minecraft.getInstance()));
+                contentY += 38;
+                addAction(contentX, contentY, half, "Remove Nearest", () -> BlockTrackerState.removeNearestWaypoint(Minecraft.getInstance()));
+                addAction(contentX + half + 10, contentY, half, "Clear All", BlockTrackerState::clearWaypoints);
+                contentY += 38;
+                addAction(contentX, contentY, half, "Clear Death", BlockTrackerState::clearDeathMarker);
+            }
+            case VISUALS -> {
+                addToggle(contentX, contentY, half, "Stats HUD", BlockTrackerState::statsHudEnabled, BlockTrackerState::toggleStatsHud);
+                addToggle(contentX + half + 10, contentY, half, "Fullbright", BlockTrackerState::fullbrightEnabled, BlockTrackerState::toggleFullbright);
+                contentY += 38;
+                addToggle(contentX, contentY, contentWidth, "Custom Crosshair", BlockTrackerState::customCrosshairEnabled, BlockTrackerState::toggleCustomCrosshair);
+                contentY += 38;
+                addAction(contentX, contentY, half, "Style: " + BlockTrackerState.crosshairStyleName(), BlockTrackerState::cycleCrosshairStyle);
+                addAction(contentX + half + 10, contentY, half, "Size +", BlockTrackerState::increaseCrosshairSize);
+                contentY += 38;
+                addAction(contentX, contentY, half, "Size -", BlockTrackerState::decreaseCrosshairSize);
+                addAction(contentX + half + 10, contentY, half, "Done", () -> Minecraft.getInstance().setScreen(null));
+            }
+        }
     }
 
     private void addToggle(int x, int y, int width, String label, BooleanSupplier state, Runnable action) {
-        controls.add(new MenuControl(x, y, width, 20, label, state, action));
+        controls.add(new MenuControl(x, y, width, 30, label, state, action));
     }
 
     private void addAction(int x, int y, int width, String label, Runnable action) {
-        controls.add(new MenuControl(x, y, width, 22, label, null, action));
+        controls.add(new MenuControl(x, y, width, 30, label, null, action));
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (event.key() == InputConstants.KEY_RSHIFT) {
+        if (event.key() == InputConstants.KEY_RSHIFT || event.key() == InputConstants.KEY_ESCAPE) {
             Minecraft.getInstance().setScreen(null);
             return true;
         }
@@ -96,9 +128,18 @@ public final class BlockTrackerConfigScreen extends Screen {
             return super.mouseClicked(event, doubleClick);
         }
 
+        for (TabControl tab : tabs) {
+            if (tab.contains(event.x(), event.y(), currentOffsetY)) {
+                activeTab = tab.tab();
+                rebuildLayout();
+                return true;
+            }
+        }
+
         for (MenuControl control : controls) {
-            if (control.contains(event.x(), event.y())) {
+            if (control.contains(event.x(), event.y(), currentOffsetY)) {
                 control.action().run();
+                rebuildLayout();
                 return true;
             }
         }
@@ -108,18 +149,30 @@ public final class BlockTrackerConfigScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        extractTransparentBackground(graphics);
-        graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, PANEL_COLOR);
-        graphics.outline(panelX, panelY, panelWidth, panelHeight, PANEL_EDGE);
-        graphics.fill(panelX, panelY, panelX + 4, panelY + panelHeight, 0xD04AA3A6);
-        graphics.fill(panelX + 4, panelY, panelX + 8, panelY + panelHeight, 0xD0FFC857);
+        VeyraUi.screenBackground(graphics, this.width, this.height, true);
 
-        graphics.text(this.font, "VEYRA CLIENT", panelX + 18, panelY + 14, ACCENT);
-        graphics.text(this.font, "Utility controls", panelX + 18, panelY + 30, TEXT);
-        graphics.text(this.font, "Right Shift closes", panelX + panelWidth - this.font.width("Right Shift closes") - 14, panelY + 18, MUTED);
+        float progress = Math.min(1.0F, (System.currentTimeMillis() - openedAt) / 230.0F);
+        float eased = 1.0F - (float) Math.pow(1.0F - progress, 4.0F);
+        int offscreenOffset = this.height - panelY + 18;
+        currentOffsetY = Math.round((1.0F - eased) * offscreenOffset);
+
+        int y = panelY + currentOffsetY;
+        VeyraUi.panel(graphics, panelX, y, panelWidth, panelHeight);
+        graphics.fill(panelX + 1, y + 1, panelX + panelWidth - 1, y + 42, 0xB0141820);
+        graphics.fill(panelX + 18, y + 43, panelX + panelWidth - 18, y + 44, 0x4438424F);
+
+        VeyraUi.text(graphics, this.font, "Veyra", panelX + 20, y + 15, TEXT);
+        VeyraUi.text(graphics, this.font, activeTab.title, panelX + 168, y + 15, ACTIVE);
+        VeyraUi.text(graphics, this.font, "Right Shift closes", panelX + panelWidth - VeyraUi.width(this.font, "Right Shift closes") - 20, y + 15, MUTED);
+
+        for (TabControl tab : tabs) {
+            tab.extract(graphics, this.font, mouseX, mouseY, currentOffsetY, tab.tab() == activeTab);
+        }
+
+        VeyraUi.text(graphics, this.font, activeTab.description, panelX + 168, panelY + currentOffsetY + 49, MUTED);
 
         for (MenuControl control : controls) {
-            control.extract(graphics, this.font, mouseX, mouseY);
+            control.extract(graphics, this.font, mouseX, mouseY, currentOffsetY);
         }
     }
 
@@ -128,19 +181,52 @@ public final class BlockTrackerConfigScreen extends Screen {
         return false;
     }
 
-    private record MenuControl(int x, int y, int width, int height, String label, BooleanSupplier state, Runnable action) {
-        boolean contains(double mouseX, double mouseY) {
-            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    private enum Tab {
+        BLOCKS("Blocks", "Search, ESP, tracers, and target controls"),
+        ENTITIES("Entities", "Configure player, animal, and hostile overlays"),
+        WAYPOINTS("Waypoints", "Drop markers, track locations, and manage death points"),
+        VISUALS("Visuals", "HUD modules, fullbright, and display options");
+
+        private final String title;
+        private final String description;
+
+        Tab(String title, String description) {
+            this.title = title;
+            this.description = description;
+        }
+    }
+
+    private record TabControl(int x, int y, int width, int height, Tab tab) {
+        boolean contains(double mouseX, double mouseY, int offsetY) {
+            return mouseX >= x && mouseX <= x + width && mouseY >= y + offsetY && mouseY <= y + offsetY + height;
         }
 
-        void extract(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font, int mouseX, int mouseY) {
-            boolean hover = contains(mouseX, mouseY);
-            boolean toggle = state != null;
-            int fill = hover ? BUTTON_HOVER : BUTTON_COLOR;
+        void extract(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font, int mouseX, int mouseY, int offsetY, boolean selected) {
+            boolean hover = contains(mouseX, mouseY, offsetY);
+            int drawY = y + offsetY;
+            int fill = selected ? 0xE0263340 : hover ? VeyraUi.SURFACE_HOVER : 0x00111111;
+            int edge = selected ? 0x887DD3FC : hover ? 0x5538424F : 0x0038424F;
 
-            graphics.fill(x, y, x + width, y + height, fill);
-            graphics.outline(x, y, width, height, hover ? ACCENT : 0x70687984);
-            graphics.text(font, label, x + 8, y + 6, TEXT);
+            graphics.fill(x, drawY, x + width, drawY + height, fill);
+            graphics.outline(x, drawY, width, height, edge);
+            if (selected) {
+                graphics.fill(x, drawY + 6, x + 2, drawY + height - 6, ACTIVE);
+            }
+            VeyraUi.text(graphics, font, tab.title, x + 12, drawY + 9, selected ? TEXT : MUTED);
+        }
+    }
+
+    private record MenuControl(int x, int y, int width, int height, String label, BooleanSupplier state, Runnable action) {
+        boolean contains(double mouseX, double mouseY, int offsetY) {
+            return mouseX >= x && mouseX <= x + width && mouseY >= y + offsetY && mouseY <= y + offsetY + height;
+        }
+
+        void extract(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font, int mouseX, int mouseY, int offsetY) {
+            boolean hover = contains(mouseX, mouseY, offsetY);
+            boolean toggle = state != null;
+            int drawY = y + offsetY;
+            VeyraUi.button(graphics, x, drawY, width, height, true, hover);
+            VeyraUi.text(graphics, font, label, x + 11, drawY + 10, TEXT);
 
             if (!toggle) {
                 return;
@@ -148,13 +234,13 @@ public final class BlockTrackerConfigScreen extends Screen {
 
             boolean enabled = state.getAsBoolean();
             String value = enabled ? "ON" : "OFF";
-            int valueWidth = font.width(value);
-            int pillWidth = valueWidth + 18;
-            int pillX = x + width - pillWidth - 5;
-            int pillY = y + 4;
+            int valueWidth = VeyraUi.width(font, value);
+            int pillWidth = Math.max(42, valueWidth + 18);
+            int pillX = x + width - pillWidth - 7;
+            int pillY = drawY + 6;
 
-            graphics.fill(pillX, pillY, pillX + pillWidth, pillY + height - 8, enabled ? BUTTON_ON : BUTTON_OFF);
-            graphics.text(font, value, pillX + 9, pillY + 3, 0xFFFFFFFF);
+            graphics.fill(pillX, pillY, pillX + pillWidth, pillY + height - 12, enabled ? 0xCC145C4A : 0xCC4A222A);
+            VeyraUi.text(graphics, font, value, pillX + (pillWidth - valueWidth) / 2, pillY + 4, enabled ? GOOD : BAD);
         }
     }
 }

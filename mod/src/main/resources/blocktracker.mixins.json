@@ -4,6 +4,10 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "AbstractButtonThemeMixin",
+    "CameraAccessor",
+    "CrosshairMixin",
+    "FreecamCameraMixin",
+    "FreecamInputMixin",
     "HudMixin",
     "LightmapRenderStateExtractorMixin",
     "MinecraftClientMixin",

@@ -3,7 +3,6 @@ package dev.blocktracker;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -51,16 +50,12 @@ public final class BlockSearchScreen extends Screen {
         buttonY = suggestionsY + (MAX_SUGGESTIONS * SUGGESTION_ROW_HEIGHT) + 8;
         statusY = buttonY + 30;
 
-        input = new EditBox(this.font, boxX, inputY, boxWidth, 22, Component.literal("Block ID"));
+        input = new EditBox(this.font, boxX + 10, inputY + 2, boxWidth - 20, 18, Component.literal("Block ID"));
         input.setHint(Component.literal("chest or minecraft:diamond_ore"));
         input.setMaxLength(128);
         input.setResponder(this::updateSuggestions);
         addRenderableWidget(input);
         setInitialFocus(input);
-
-        addRenderableWidget(Button.builder(Component.literal("Track"), button -> submit())
-                .bounds(boxX, buttonY, boxWidth, 22)
-                .build());
 
         updateSuggestions(input.getValue());
     }
@@ -140,6 +135,11 @@ public final class BlockSearchScreen extends Screen {
                 submit();
                 return true;
             }
+
+            if (event.x() >= boxX && event.x() <= boxX + boxWidth && event.y() >= buttonY && event.y() <= buttonY + 22) {
+                submit();
+                return true;
+            }
         }
 
         return super.mouseClicked(event, doubleClick);
@@ -147,11 +147,19 @@ public final class BlockSearchScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        VeyraUi.screenBackground(graphics, this.width, this.height, true);
+        VeyraUi.panel(graphics, boxX - 16, boxY, boxWidth + 32, 214);
+        VeyraUi.text(graphics, this.font, "Block search", boxX, boxY + 12, 0xFFF4F7FA);
+        VeyraUi.text(graphics, this.font, "Type a block, pick a suggestion, then track it", boxX, boxY + 27, 0xFF8B96A5);
+        VeyraUi.button(graphics, boxX, boxY + 34, boxWidth, 22, true, false);
+
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
-        graphics.centeredText(this.font, this.title, this.width / 2, boxY + 8, 0xFFFFFFFF);
         extractSuggestions(graphics, mouseX, mouseY);
-        graphics.centeredText(this.font, status, this.width / 2, statusY, 0xFFB9D7FF);
+        VeyraUi.button(graphics, boxX, buttonY, boxWidth, 22, true,
+                mouseX >= boxX && mouseX <= boxX + boxWidth && mouseY >= buttonY && mouseY <= buttonY + 22);
+        VeyraUi.centeredText(graphics, this.font, "Track", this.width / 2, buttonY + 7, 0xFFF4F7FA);
+        VeyraUi.centeredText(graphics, this.font, status.getString(), this.width / 2, statusY, 0xFF8B96A5);
     }
 
     private void updateSuggestions(String raw) {
@@ -244,11 +252,11 @@ public final class BlockSearchScreen extends Screen {
 
     private void extractSuggestions(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int height = MAX_SUGGESTIONS * SUGGESTION_ROW_HEIGHT;
-        graphics.fill(boxX, suggestionsY, boxX + boxWidth, suggestionsY + height, 0xCC101722);
-        graphics.outline(boxX, suggestionsY, boxWidth, height, 0x804B6B8B);
+        graphics.fill(boxX, suggestionsY, boxX + boxWidth, suggestionsY + height, VeyraUi.SURFACE);
+        graphics.outline(boxX, suggestionsY, boxWidth, height, VeyraUi.EDGE);
 
         if (suggestions.isEmpty()) {
-            graphics.text(this.font, "No close blocks found", boxX + 8, suggestionsY + 7, 0xFF8795A5);
+            VeyraUi.text(graphics, this.font, "No close blocks found", boxX + 8, suggestionsY + 7, 0xFF8795A5);
             return;
         }
 
@@ -260,18 +268,18 @@ public final class BlockSearchScreen extends Screen {
 
             if (selected || hovered) {
                 graphics.fill(boxX + 1, rowY + 1, boxX + boxWidth - 1, rowY + SUGGESTION_ROW_HEIGHT - 1,
-                        selected ? 0xAA2B6FDB : 0x663A4658);
+                        selected ? 0x6638BDF8 : 0x552A313C);
             }
 
             String id = suggestion.id().toString();
-            int idWidth = this.font.width(id);
+            int idWidth = VeyraUi.width(this.font, id);
             int labelMaxWidth = idWidth < boxWidth / 2 ? boxWidth - idWidth - 22 : boxWidth - 12;
             String label = fitText(suggestion.label(), labelMaxWidth);
 
-            graphics.text(this.font, label, boxX + 7, rowY + 5, 0xFFFFFFFF);
+            VeyraUi.text(graphics, this.font, label, boxX + 7, rowY + 5, 0xFFFFFFFF);
 
             if (idWidth < boxWidth / 2) {
-                graphics.text(this.font, id, boxX + boxWidth - idWidth - 7, rowY + 5, 0xFF91A4B8);
+                VeyraUi.text(graphics, this.font, id, boxX + boxWidth - idWidth - 7, rowY + 5, 0xFF91A4B8);
             }
         }
     }
@@ -286,11 +294,7 @@ public final class BlockSearchScreen extends Screen {
     }
 
     private String fitText(String text, int maxWidth) {
-        if (this.font.width(text) <= maxWidth) {
-            return text;
-        }
-
-        return this.font.plainSubstrByWidth(text, Math.max(0, maxWidth - this.font.width("..."))) + "...";
+        return VeyraUi.fit(this.font, text, maxWidth);
     }
 
     private int score(String raw, Identifier id, String label) {

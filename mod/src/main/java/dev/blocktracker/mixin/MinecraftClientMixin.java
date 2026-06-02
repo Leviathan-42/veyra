@@ -5,6 +5,7 @@ import dev.blocktracker.BlockSearchScreen;
 import dev.blocktracker.BlockTrackerConfigScreen;
 import dev.blocktracker.BlockTrackerRenderer;
 import dev.blocktracker.BlockTrackerState;
+import dev.blocktracker.VeyraFreecam;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -18,6 +19,16 @@ public abstract class MinecraftClientMixin {
     private boolean blockTracker$backslashWasDown;
     @Unique
     private boolean blockTracker$rightShiftWasDown;
+
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void veyra$tickFreecam(CallbackInfo ci) {
+        Minecraft client = (Minecraft) (Object) this;
+        if (client.getWindow() == null) {
+            return;
+        }
+
+        VeyraFreecam.tick(client, InputConstants.isKeyDown(client.getWindow(), InputConstants.KEY_C));
+    }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void blockTracker$openSearchScreen(CallbackInfo ci) {

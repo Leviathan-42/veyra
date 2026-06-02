@@ -5,6 +5,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +34,9 @@ public final class BlockTrackerState {
     private static boolean statsHudEnabled = true;
     private static boolean waypointHudEnabled = true;
     private static boolean fullbrightEnabled = false;
+    private static boolean customCrosshairEnabled = true;
+    private static int crosshairStyle;
+    private static int crosshairSize = 5;
     private static boolean wasDead;
     private static BlockPos deathMarker;
     private static final List<Waypoint> waypoints = new ArrayList<>();
@@ -152,6 +157,42 @@ public final class BlockTrackerState {
         fullbrightEnabled = !fullbrightEnabled;
     }
 
+    public static boolean customCrosshairEnabled() {
+        return customCrosshairEnabled;
+    }
+
+    public static void toggleCustomCrosshair() {
+        customCrosshairEnabled = !customCrosshairEnabled;
+    }
+
+    public static int crosshairStyle() {
+        return crosshairStyle;
+    }
+
+    public static String crosshairStyleName() {
+        return switch (crosshairStyle) {
+            case 1 -> "Dot";
+            case 2 -> "Brackets";
+            default -> "Plus";
+        };
+    }
+
+    public static void cycleCrosshairStyle() {
+        crosshairStyle = (crosshairStyle + 1) % 3;
+    }
+
+    public static int crosshairSize() {
+        return crosshairSize;
+    }
+
+    public static void increaseCrosshairSize() {
+        crosshairSize = Math.min(12, crosshairSize + 1);
+    }
+
+    public static void decreaseCrosshairSize() {
+        crosshairSize = Math.max(2, crosshairSize - 1);
+    }
+
     public static List<Waypoint> waypoints() {
         return List.copyOf(waypoints);
     }
@@ -165,12 +206,50 @@ public final class BlockTrackerState {
             return;
         }
 
+        addWaypoint("Home " + (waypoints.size() + 1), client.player.blockPosition().immutable());
+    }
+
+    public static void addLookWaypoint(Minecraft client) {
+        if (client.player == null) {
+            return;
+        }
+
+        BlockPos pos = client.player.blockPosition().immutable();
+        String name = "Home ";
+        HitResult hit = client.hitResult;
+        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK) {
+            pos = blockHit.getBlockPos().immutable();
+            name = "Marker ";
+        }
+
+        addWaypoint(name + (waypoints.size() + 1), pos);
+    }
+
+    private static void addWaypoint(String name, BlockPos pos) {
         if (waypoints.size() >= MAX_WAYPOINTS) {
             waypoints.remove(0);
         }
 
-        BlockPos pos = client.player.blockPosition().immutable();
-        waypoints.add(new Waypoint("Waypoint " + (waypoints.size() + 1), pos));
+        waypoints.add(new Waypoint(name, pos));
+    }
+
+    public static void removeNearestWaypoint(Minecraft client) {
+        if (client.player == null || waypoints.isEmpty()) {
+            return;
+        }
+
+        BlockPos playerPos = client.player.blockPosition();
+        int nearestIndex = 0;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < waypoints.size(); index++) {
+            double distance = waypoints.get(index).pos().distSqr(playerPos);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = index;
+            }
+        }
+
+        waypoints.remove(nearestIndex);
     }
 
     public static void clearWaypoints() {
