@@ -123,6 +123,8 @@
     try {
       versions = await invoke<VersionChoice[]>('list_versions');
       selectedVersion =
+        versions.find((version) => version.id === '26.1.2')?.id ??
+        versions.find((version) => version.id === '1.21.11')?.id ??
         versions.find((version) => version.version_type === 'release')?.id ??
         versions[0]?.id ??
         '';

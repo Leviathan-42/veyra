@@ -93,6 +93,8 @@ public final class BlockTrackerConfigScreen extends Screen {
                 addToggle(contentX, contentY, half, "Stats HUD", BlockTrackerState::statsHudEnabled, BlockTrackerState::toggleStatsHud);
                 addToggle(contentX + half + 10, contentY, half, "Fullbright", BlockTrackerState::fullbrightEnabled, BlockTrackerState::toggleFullbright);
                 contentY += 38;
+                addAction(contentX, contentY, contentWidth, "Shaders...", () -> Minecraft.getInstance().setScreen(new VeyraShaderScreen(this)));
+                contentY += 38;
                 addToggle(contentX, contentY, contentWidth, "Custom Crosshair", BlockTrackerState::customCrosshairEnabled, BlockTrackerState::toggleCustomCrosshair);
                 contentY += 38;
                 addAction(contentX, contentY, half, "Style: " + BlockTrackerState.crosshairStyleName(), BlockTrackerState::cycleCrosshairStyle);

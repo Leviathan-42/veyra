@@ -12,8 +12,16 @@
     "HudMixin",
     "LightmapRenderStateExtractorMixin",
     "MinecraftClientMixin",
+    "OptionsSubScreenAccessor",
     "ScreenThemeMixin",
-    "TitleScreenThemeMixin"
+    "TitleScreenThemeMixin",
+    "VideoSettingsScreenMixin",
+    "VulkanModCloudRendererMixin",
+    "VulkanModOptionsMixin",
+    "VulkanModPipelineManagerMixin",
+    "VulkanModRendererMixin",
+    "VulkanModShaderLoadUtilMixin",
+    "VulkanModWorldRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

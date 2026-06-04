@@ -36,6 +36,10 @@ def versionJson = file("${minecraftDir}/versions/${minecraft_version}/${minecraf
 def libraryJars = fileTree("${minecraftDir}/libraries") {
     include '**/*.jar'
 }
+def localModJars = fileTree("${minecraftDir}/mods") {
+    include 'VulkanMod*.jar'
+    include 'vulkanmod*.jar'
+}
 
 repositories {
     maven { url = 'https://maven.fabricmc.net/' }
@@ -55,6 +59,7 @@ if (versionJson.exists()) {
 dependencies {
     compileOnly files(minecraftJar)
     compileOnly libraryJars
+    compileOnly localModJars
     minecraftLibraries.each { compileOnly it }
     compileOnly "net.fabricmc:fabric-loader:${loader_version}"
     compileOnly "net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7"

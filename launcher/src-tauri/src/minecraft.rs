@@ -341,7 +341,9 @@ pub async fn install_and_launch(
     fs::create_dir_all(&game_dir).await?;
     fs::create_dir_all(game_dir.join("mods")).await?;
     sync_development_block_tracker_mod(&app, &game_dir).await?;
+    sync_local_solas_shaderpack(&app, &game_dir).await?;
     install_managed_client_mods(&app, &game_dir, &version_id).await?;
+    sync_development_vulkan_mod(&app, &game_dir, &version_id).await?;
 
     app.emit("launcher-status", format!("Installing {version_id}"))
         .ok();
@@ -497,6 +499,134 @@ async fn install_modrinth_mod(
     app.emit(
         "launch-log",
         format!("Installed {} ({})", managed.label, file.filename),
+    )
+    .ok();
+
+    Ok(())
+}
+
+async fn sync_local_solas_shaderpack(app: &AppHandle, game_dir: &Path) -> Result<()> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let Some(workspace_dir) = manifest_dir.parent().and_then(Path::parent) else {
+        return Ok(());
+    };
+
+    let source = workspace_dir.join("Solas Shader V3.6");
+    if !source.exists() {
+        return Ok(());
+    }
+
+    let destination = game_dir.join("shaderpacks").join("Solas Shader V3.6");
+    fs::create_dir_all(destination.parent().context("shaderpacks path has no parent")?).await?;
+
+    let source_clone = source.clone();
+    let destination_clone = destination.clone();
+    tokio::task::spawn_blocking(move || copy_directory_replace(&source_clone, &destination_clone))
+        .await
+        .context("Failed to join Solas shaderpack sync task")??;
+
+    app.emit(
+        "launch-log",
+        format!("Synced Solas Shader V3.6 to {}", destination.display()),
+    )
+    .ok();
+
+    Ok(())
+}
+
+fn copy_directory_replace(source: &Path, destination: &Path) -> Result<()> {
+    if destination.exists() {
+        std::fs::remove_dir_all(destination)?;
+    }
+    std::fs::create_dir_all(destination)?;
+
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_directory_replace(&source_path, &destination_path)?;
+        } else {
+            std::fs::copy(&source_path, &destination_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn sync_development_vulkan_mod(app: &AppHandle, game_dir: &Path, version_id: &str) -> Result<()> {
+    if version_id != "1.21.11" {
+        app.emit(
+            "launch-log",
+            format!(
+                "Skipped local experimental VulkanMod dev jar because it is built from the 1.21.11 VulkanMod sources. Using Modrinth VulkanMod for Minecraft {version_id} instead."
+            ),
+        )
+        .ok();
+        return Ok(());
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let Some(workspace_dir) = manifest_dir.parent().and_then(Path::parent) else {
+        return Ok(());
+    };
+
+    let vulkan_libs_dir = workspace_dir.join("VulkanMod").join("build").join("libs");
+    let mut source = None;
+
+    if vulkan_libs_dir.exists() {
+        let mut entries = fs::read_dir(&vulkan_libs_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let is_dev_vulkanmod = file_name.starts_with("VulkanMod_")
+                && file_name.ends_with("-dev.jar")
+                && !file_name.ends_with("-sources.jar");
+
+            if is_dev_vulkanmod {
+                source = Some(path);
+                break;
+            }
+        }
+    }
+
+    let Some(source) = source else {
+        app.emit(
+            "launch-log",
+            format!(
+                "Local VulkanMod dev jar was not found in {}. Using Modrinth VulkanMod instead.",
+                vulkan_libs_dir.display()
+            ),
+        )
+        .ok();
+        return Ok(());
+    };
+
+    let mods_dir = game_dir.join("mods");
+    fs::create_dir_all(&mods_dir).await?;
+
+    let mut entries = fs::read_dir(&mods_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().to_lowercase();
+        let is_vulkanmod = (file_name.starts_with("vulkanmod-") || file_name.starts_with("vulkanmod_"))
+            && path.extension().and_then(|ext| ext.to_str()) == Some("jar");
+
+        if is_vulkanmod {
+            fs::remove_file(path).await?;
+        }
+    }
+
+    let destination = mods_dir.join(
+        source
+            .file_name()
+            .context("Local VulkanMod dev jar is missing a file name")?,
+    );
+    fs::copy(&source, &destination).await?;
+
+    app.emit(
+        "launch-log",
+        format!("Synced local VulkanMod dev jar to {}", destination.display()),
     )
     .ok();
 
