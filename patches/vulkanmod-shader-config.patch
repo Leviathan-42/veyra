@@ -1,0 +1,172 @@
+diff --git a/src/main/java/net/vulkanmod/config/Config.java b/src/main/java/net/vulkanmod/config/Config.java
+index 0cbcffc..bdb150a 100644
+--- a/src/main/java/net/vulkanmod/config/Config.java
++++ b/src/main/java/net/vulkanmod/config/Config.java
+@@ -30,6 +30,14 @@ public class Config {
+     public boolean backFaceCulling = true;
+     public boolean textureAnimations = true;
+ 
++    /**
++     * Vulkan shaderpack selection. "OFF" keeps the current vanilla/VulkanMod renderer.
++     * Any other value is the display id/path of a shaderpack selected from the in-game
++     * Video Settings > Shaders page. This is intentionally config-only until the
++     * Vulkan shader pipeline can compile and bind the selected pack.
++     */
++    public String shaderPack = "OFF";
++
+     public void write() {
+         if (!Files.exists(CONFIG_PATH.getParent())) {
+             try {
+diff --git a/src/main/java/net/vulkanmod/config/option/Options.java b/src/main/java/net/vulkanmod/config/option/Options.java
+index d9ea065..ffb4f1c 100644
+--- a/src/main/java/net/vulkanmod/config/option/Options.java
++++ b/src/main/java/net/vulkanmod/config/option/Options.java
+@@ -8,6 +8,7 @@ import net.vulkanmod.Initializer;
+ import net.vulkanmod.config.Config;
+ import net.vulkanmod.config.Platform;
+ import net.vulkanmod.config.gui.*;
++import net.vulkanmod.config.shader.ShaderPackManager;
+ import net.vulkanmod.config.video.*;
+ import net.vulkanmod.render.chunk.WorldRenderer;
+ import net.vulkanmod.render.chunk.build.light.LightMode;
+@@ -49,6 +50,12 @@ public abstract class Options {
+         );
+         optionPages.add(page);
+ 
++        page = new OptionPage(
++                Component.translatable("vulkanmod.options.pages.shaders").getString(),
++                Options.getShaderOpts()
++        );
++        optionPages.add(page);
++
+         page = new OptionPage(
+                 Component.translatable("vulkanmod.options.pages.other").getString(),
+                 Options.getOtherOpts()
+@@ -411,6 +418,27 @@ public abstract class Options {
+         };
+     }
+ 
++    public static OptionBlock[] getShaderOpts() {
++        String selectedShaderPack = ShaderPackManager.normalizeSelection(config.shaderPack);
++        if (!selectedShaderPack.equals(config.shaderPack)) {
++            config.shaderPack = selectedShaderPack;
++        }
++
++        return new OptionBlock[]{
++                new OptionBlock("", new Option<?>[]{
++                        new CyclingOption<>(Component.translatable("vulkanmod.options.shaderPack"),
++                                ShaderPackManager.getAvailableShaderPacks(),
++                                value -> config.shaderPack = value,
++                                () -> ShaderPackManager.normalizeSelection(config.shaderPack))
++                                .setTranslator(value -> value.equals(ShaderPackManager.OFF)
++                                        ? Component.translatable("options.off")
++                                        : Component.literal(value))
++                                .setTooltip(value -> Component.translatable("vulkanmod.options.shaderPack.tooltip"))
++                                .setImpact(PerformanceImpact.HIGH)
++                })
++        };
++    }
++
+     public static OptionBlock[] getOtherOpts() {
+         return new OptionBlock[]{
+                 new OptionBlock("", new Option<?>[]{
+diff --git a/src/main/resources/assets/vulkanmod/lang/en_us.json b/src/main/resources/assets/vulkanmod/lang/en_us.json
+index e3e1799..5b425c3 100644
+--- a/src/main/resources/assets/vulkanmod/lang/en_us.json
++++ b/src/main/resources/assets/vulkanmod/lang/en_us.json
+@@ -4,6 +4,7 @@
+   "vulkanmod.options.pages.video": "Video",
+   "vulkanmod.options.pages.graphics": "Graphics",
+   "vulkanmod.options.pages.optimizations": "Optimizations",
++  "vulkanmod.options.pages.shaders": "Shaders",
+   "vulkanmod.options.pages.other": "Other",
+ 
+   "vulkanmod.options.performanceImpact": "Performance impact: %s",
+@@ -58,5 +59,8 @@
+ 
+   "vulkanmod.options.textureAnimations": "Texture Animations",
+ 
++  "vulkanmod.options.shaderPack": "Shader Pack",
++  "vulkanmod.options.shaderPack.tooltip": "Experimental Vulkan shaderpack selector. Packs are detected from shaderpacks/ and vulkan-shaderpacks/. Selecting a pack only saves the choice until the Vulkan shader pipeline is implemented.",
++
+   "vulkanmod.options.searchFieldPlaceholder": "Search Graphics Settings"
+ }
+\ No newline at end of file
+diff --git a/src/main/java/net/vulkanmod/config/shader/ShaderPackManager.java b/src/main/java/net/vulkanmod/config/shader/ShaderPackManager.java
+new file mode 100644
+index 0000000..5332e2b
+--- /dev/null
++++ b/src/main/java/net/vulkanmod/config/shader/ShaderPackManager.java
+@@ -0,0 +1,72 @@
++package net.vulkanmod.config.shader;
++
++import net.minecraft.client.Minecraft;
++
++import java.io.File;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Locale;
++
++/**
++ * Discovers shaderpacks for the experimental Vulkan shader menu.
++ *
++ * This deliberately only indexes packs for now. Loading a pack requires a Vulkan
++ * render graph/compatibility layer for Iris-style passes and uniforms.
++ */
++public final class ShaderPackManager {
++    public static final String OFF = "OFF";
++
++    private ShaderPackManager() {
++    }
++
++    public static String[] getAvailableShaderPacks() {
++        List<String> packs = new ArrayList<>();
++        packs.add(OFF);
++
++        File gameDirectory = Minecraft.getInstance().gameDirectory;
++        scanDirectory(new File(gameDirectory, "shaderpacks"), packs);
++        scanDirectory(new File(gameDirectory, "vulkan-shaderpacks"), packs);
++
++        return packs.stream()
++                .distinct()
++                .sorted(Comparator.comparing(value -> value.equals(OFF) ? "" : value.toLowerCase(Locale.ROOT)))
++                .toArray(String[]::new);
++    }
++
++    public static String normalizeSelection(String selection) {
++        if (selection == null || selection.isBlank()) {
++            return OFF;
++        }
++
++        for (String pack : getAvailableShaderPacks()) {
++            if (pack.equals(selection)) {
++                return selection;
++            }
++        }
++
++        return OFF;
++    }
++
++    public static boolean isShaderEnabled(String selection) {
++        return selection != null && !selection.equals(OFF);
++    }
++
++    private static void scanDirectory(File directory, List<String> packs) {
++        File[] files = directory.listFiles();
++        if (files == null) {
++            return;
++        }
++
++        for (File file : files) {
++            if (file.isDirectory()) {
++                if (new File(file, "shaders").isDirectory()) {
++                    packs.add(file.getName());
++                }
++            }
++            else if (file.isFile() && file.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
++                packs.add(file.getName());
++            }
++        }
++    }
++}
