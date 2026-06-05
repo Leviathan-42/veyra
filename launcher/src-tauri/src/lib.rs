@@ -4,8 +4,9 @@ mod minecraft;
 mod paths;
 mod types;
 
-use crate::types::{
-    AuthCodePayload, AuthStart, InstalledMod, LaunchResult, PublicAccount, VersionChoice,
+use crate::{
+    minecraft::JavaRuntime,
+    types::{AuthCodePayload, AuthStart, InstalledMod, LaunchResult, PublicAccount, VersionChoice},
 };
 use std::{env, process::Command};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -107,6 +108,13 @@ async fn list_versions() -> Result<Vec<VersionChoice>, String> {
 }
 
 #[tauri::command]
+async fn detect_java_runtimes() -> Result<Vec<JavaRuntime>, String> {
+    minecraft::detect_java_runtimes()
+        .await
+        .map_err(error::stringify)
+}
+
+#[tauri::command]
 async fn install_and_launch(
     app: tauri::AppHandle,
     java_path: String,
@@ -115,6 +123,7 @@ async fn install_and_launch(
     window_width: Option<u32>,
     window_height: Option<u32>,
     fullscreen: Option<bool>,
+    render_profile: Option<String>,
 ) -> Result<LaunchResult, String> {
     minecraft::install_and_launch(
         app,
@@ -124,6 +133,7 @@ async fn install_and_launch(
         window_width,
         window_height,
         fullscreen,
+        render_profile,
     )
     .await
     .map_err(error::stringify)
@@ -139,8 +149,56 @@ async fn mods_dir() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn profile_mods_dir(render_profile: Option<String>) -> Result<String, String> {
+    let dir = minecraft::profile_mods_dir(render_profile.as_deref()).map_err(error::stringify)?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(dir.display().to_string())
+}
+
+#[tauri::command]
 async fn list_installed_mods() -> Result<Vec<InstalledMod>, String> {
     let dir = paths::game_dir().map_err(error::stringify)?.join("mods");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = tokio::fs::read_dir(dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut mods = Vec::new();
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jar") {
+            continue;
+        }
+
+        let metadata = entry.metadata().await.map_err(|error| error.to_string())?;
+        mods.push(InstalledMod {
+            file_name: entry.file_name().to_string_lossy().to_string(),
+            size_bytes: metadata.len(),
+        });
+    }
+
+    mods.sort_by(|a, b| a.file_name.cmp(&b.file_name));
+    Ok(mods)
+}
+
+#[tauri::command]
+async fn list_profile_installed_mods(
+    render_profile: Option<String>,
+) -> Result<Vec<InstalledMod>, String> {
+    let dir = minecraft::profile_mods_dir(render_profile.as_deref()).map_err(error::stringify)?;
+    list_mods_in_dir(dir).await
+}
+
+async fn list_mods_in_dir(dir: std::path::PathBuf) -> Result<Vec<InstalledMod>, String> {
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|error| error.to_string())?;
@@ -198,6 +256,37 @@ async fn open_mods_folder() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn open_profile_mods_folder(render_profile: Option<String>) -> Result<(), String> {
+    let dir = minecraft::profile_mods_dir(render_profile.as_deref()).map_err(error::stringify)?;
+    open_folder(dir).await
+}
+
+async fn open_folder(dir: std::path::PathBuf) -> Result<(), String> {
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if cfg!(target_os = "windows") {
+        Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    } else {
+        Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 pub fn run() {
     force_linux_webview_x11();
 
@@ -211,10 +300,14 @@ pub fn run() {
             auth_debug_path,
             auth_sign_out,
             list_versions,
+            detect_java_runtimes,
             install_and_launch,
             mods_dir,
+            profile_mods_dir,
             list_installed_mods,
-            open_mods_folder
+            list_profile_installed_mods,
+            open_mods_folder,
+            open_profile_mods_folder
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Veyra Launcher");

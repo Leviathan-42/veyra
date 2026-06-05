@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::{
     collections::HashMap,
@@ -22,7 +22,7 @@ use tokio::{
 
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
-const MANAGED_MODS: &[ManagedMod] = &[
+const VULKAN_MANAGED_MODS: &[ManagedMod] = &[
     // Keep the Vulkan profile lean. VulkanMod is a renderer replacement, so
     // renderer/chunk/culling/network optimization mods can fight it or waste FPS.
     ManagedMod {
@@ -31,10 +31,80 @@ const MANAGED_MODS: &[ManagedMod] = &[
     },
 ];
 
+const OPENGL_MANAGED_MODS: &[ManagedMod] = &[
+    ManagedMod {
+        slug: "fabric-api",
+        label: "Fabric API",
+    },
+    ManagedMod {
+        slug: "sodium",
+        label: "Sodium",
+    },
+    ManagedMod {
+        slug: "iris",
+        label: "Iris Shaders",
+    },
+    ManagedMod {
+        slug: "lithium",
+        label: "Lithium",
+    },
+    ManagedMod {
+        slug: "ferrite-core",
+        label: "FerriteCore",
+    },
+    ManagedMod {
+        slug: "entityculling",
+        label: "EntityCulling",
+    },
+    ManagedMod {
+        slug: "modernfix",
+        label: "ModernFix",
+    },
+    ManagedMod {
+        slug: "cloth-config",
+        label: "Cloth Config API",
+    },
+    ManagedMod {
+        slug: "noisium",
+        label: "Noisium",
+    },
+    ManagedMod {
+        slug: "krypton",
+        label: "Krypton",
+    },
+    ManagedMod {
+        slug: "immediatelyfast",
+        label: "ImmediatelyFast",
+    },
+    ManagedMod {
+        slug: "moreculling",
+        label: "More Culling",
+    },
+    ManagedMod {
+        slug: "enhancedblockentities",
+        label: "Enhanced Block Entities",
+    },
+    ManagedMod {
+        slug: "dynamic-fps",
+        label: "Dynamic FPS",
+    },
+];
+
 struct ManagedMod {
     slug: &'static str,
     label: &'static str,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct JavaRuntime {
+    pub path: String,
+    pub version: Option<u32>,
+    pub version_string: String,
+    pub vendor: String,
+    pub compatible: bool,
+}
+
+const MIN_COMPATIBLE_JAVA: u32 = 25;
 
 #[derive(Debug, Deserialize)]
 struct VersionManifest {
@@ -222,6 +292,201 @@ fn classpath_sep() -> &'static str {
     }
 }
 
+pub async fn detect_java_runtimes() -> Result<Vec<JavaRuntime>> {
+    tokio::task::spawn_blocking(detect_java_runtimes_blocking)
+        .await
+        .context("Java detection task failed")?
+}
+
+fn detect_java_runtimes_blocking() -> Result<Vec<JavaRuntime>> {
+    let mut candidates = java_candidates();
+    candidates.sort();
+    candidates.dedup();
+
+    let mut runtimes = Vec::new();
+    for candidate in candidates {
+        if !candidate.is_file() {
+            continue;
+        }
+        if let Some(runtime) = inspect_java_runtime(&candidate) {
+            if !runtimes
+                .iter()
+                .any(|existing: &JavaRuntime| existing.path == runtime.path)
+            {
+                runtimes.push(runtime);
+            }
+        }
+    }
+
+    runtimes.sort_by(|a, b| {
+        b.compatible
+            .cmp(&a.compatible)
+            .then_with(|| b.version.unwrap_or(0).cmp(&a.version.unwrap_or(0)))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    Ok(runtimes)
+}
+
+fn java_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        out.push(PathBuf::from(java_home).join("bin").join(java_exe_name()));
+    }
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            out.push(dir.join(java_exe_name()));
+        }
+    }
+
+    if cfg!(target_os = "macos") {
+        add_macos_java_home_candidates(&mut out);
+        add_globbed_java_candidates(&mut out, Path::new("/Library/Java/JavaVirtualMachines"));
+        add_globbed_java_candidates(
+            &mut out,
+            Path::new("/System/Library/Java/JavaVirtualMachines"),
+        );
+        add_globbed_java_candidates(&mut out, Path::new("/opt/homebrew/opt"));
+        add_globbed_java_candidates(&mut out, Path::new("/usr/local/opt"));
+    } else if cfg!(target_os = "windows") {
+        for root in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+            if let Ok(path) = std::env::var(root) {
+                add_globbed_java_candidates(&mut out, &PathBuf::from(path));
+            }
+        }
+    } else {
+        for root in ["/usr/lib/jvm", "/usr/java", "/opt", "/usr/local"] {
+            add_globbed_java_candidates(&mut out, Path::new(root));
+        }
+    }
+
+    out
+}
+
+fn java_exe_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
+fn add_macos_java_home_candidates(out: &mut Vec<PathBuf>) {
+    let Ok(output) = StdCommand::new("/usr/libexec/java_home").arg("-V").output() else {
+        return;
+    };
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for line in text.lines() {
+        if let Some(start) = line.find("/Library/Java/JavaVirtualMachines/") {
+            out.push(
+                PathBuf::from(line[start..].trim())
+                    .join("bin")
+                    .join(java_exe_name()),
+            );
+        }
+    }
+    if let Ok(output) = StdCommand::new("/usr/libexec/java_home").output() {
+        let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !home.is_empty() {
+            out.push(PathBuf::from(home).join("bin").join(java_exe_name()));
+        }
+    }
+}
+
+fn add_globbed_java_candidates(out: &mut Vec<PathBuf>, root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        out.push(path.join("bin").join(java_exe_name()));
+        out.push(
+            path.join("Contents")
+                .join("Home")
+                .join("bin")
+                .join(java_exe_name()),
+        );
+        if path.is_dir() {
+            if let Ok(children) = std::fs::read_dir(&path) {
+                for child in children.flatten() {
+                    let child_path = child.path();
+                    out.push(child_path.join("bin").join(java_exe_name()));
+                    out.push(
+                        child_path
+                            .join("Contents")
+                            .join("Home")
+                            .join("bin")
+                            .join(java_exe_name()),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn inspect_java_runtime(path: &Path) -> Option<JavaRuntime> {
+    let output = StdCommand::new(path).arg("-version").output().ok()?;
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let first = text
+        .lines()
+        .find(|line| !line.trim().is_empty())?
+        .trim()
+        .to_string();
+    let version = parse_java_major(&first).or_else(|| parse_java_major(&text));
+    let vendor = parse_java_vendor(&text);
+    Some(JavaRuntime {
+        path: path.display().to_string(),
+        version,
+        version_string: first,
+        vendor,
+        compatible: version.is_some_and(|major| major >= MIN_COMPATIBLE_JAVA),
+    })
+}
+
+fn parse_java_major(text: &str) -> Option<u32> {
+    let quoted = text.split('"').nth(1);
+    let version_text = quoted.unwrap_or(text);
+    let mut parts = version_text.split(['.', '_', '-']);
+    let first = parts
+        .next()?
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    if first.is_empty() {
+        return None;
+    }
+    let first_num = first.parse::<u32>().ok()?;
+    if first_num == 1 {
+        parts.next()?.parse::<u32>().ok()
+    } else {
+        Some(first_num)
+    }
+}
+
+fn parse_java_vendor(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("temurin") {
+        "Eclipse Temurin".to_string()
+    } else if lower.contains("zulu") {
+        "Azul Zulu".to_string()
+    } else if lower.contains("oracle") {
+        "Oracle".to_string()
+    } else if lower.contains("openjdk") {
+        "OpenJDK".to_string()
+    } else if lower.contains("graalvm") {
+        "GraalVM".to_string()
+    } else {
+        "Java".to_string()
+    }
+}
+
 fn rule_matches(rule: &Rule) -> bool {
     let os_matches = match &rule.os {
         None => true,
@@ -308,23 +573,42 @@ fn resolve_java_path(java_path: &str) -> String {
         return trimmed.to_string();
     }
 
-    let homebrew_java = Path::new("/opt/homebrew/opt/java/bin/java");
-    if homebrew_java.exists() {
-        return homebrew_java.display().to_string();
+    match detect_java_runtimes_blocking() {
+        Ok(runtimes) => runtimes
+            .iter()
+            .find(|runtime| runtime.compatible)
+            .or_else(|| runtimes.first())
+            .map(|runtime| runtime.path.clone())
+            .unwrap_or_else(|| "java".to_string()),
+        Err(_) => "java".to_string(),
     }
+}
 
-    if cfg!(target_os = "macos") {
-        if let Ok(output) = StdCommand::new("/usr/libexec/java_home").args(["-v", "26"]).output() {
-            if output.status.success() {
-                let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !home.is_empty() {
-                    return format!("{home}/bin/java");
-                }
-            }
-        }
+fn normalized_render_profile(render_profile: Option<&str>) -> &'static str {
+    match render_profile
+        .unwrap_or("vulkan")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "opengl" | "gl" | "iris" => "opengl",
+        _ => "vulkan",
     }
+}
 
-    "java".to_string()
+fn managed_mods_for_profile(render_profile: &str) -> &'static [ManagedMod] {
+    match render_profile {
+        "opengl" => OPENGL_MANAGED_MODS,
+        _ => VULKAN_MANAGED_MODS,
+    }
+}
+
+pub fn profile_mods_dir(render_profile: Option<&str>) -> Result<PathBuf> {
+    let profile = normalized_render_profile(render_profile);
+    Ok(paths::game_dir()?
+        .join("profiles")
+        .join(profile)
+        .join("mods"))
 }
 
 pub async fn install_and_launch(
@@ -335,13 +619,16 @@ pub async fn install_and_launch(
     window_width: Option<u32>,
     window_height: Option<u32>,
     fullscreen: Option<bool>,
+    render_profile: Option<String>,
 ) -> Result<LaunchResult> {
     let account = auth::launch_account().await?;
     let game_dir = paths::game_dir()?;
+    let render_profile = normalized_render_profile(render_profile.as_deref());
     fs::create_dir_all(&game_dir).await?;
     fs::create_dir_all(game_dir.join("mods")).await?;
+    install_managed_client_mods(&app, &game_dir, &version_id, render_profile).await?;
+    sync_profile_mods_to_active_mods(&app, &game_dir, render_profile).await?;
     sync_development_block_tracker_mod(&app, &game_dir).await?;
-    install_managed_client_mods(&app, &game_dir, &version_id).await?;
 
     app.emit("launcher-status", format!("Installing {version_id}"))
         .ok();
@@ -381,6 +668,8 @@ pub async fn install_and_launch(
 
     let resolved_java_path = resolve_java_path(&java_path);
     app.emit("launcher-status", "Starting Minecraft").ok();
+    app.emit("launch-log", format!("Render profile: {render_profile}"))
+        .ok();
     app.emit("launch-log", format!("Using Java: {resolved_java_path}"))
         .ok();
     let child = Command::new(&resolved_java_path)
@@ -390,7 +679,11 @@ pub async fn install_and_launch(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .with_context(|| format!("Failed to spawn Java at {resolved_java_path}. Check that Java 25+ is installed."))?;
+        .with_context(|| {
+            format!(
+                "Failed to spawn Java at {resolved_java_path}. Check that Java 25+ is installed."
+            )
+        })?;
 
     let pid = child.id().unwrap_or_default();
     stream_child_output(&app, child, pid);
@@ -402,12 +695,13 @@ async fn install_managed_client_mods(
     app: &AppHandle,
     game_dir: &Path,
     version_id: &str,
+    render_profile: &str,
 ) -> Result<()> {
-    let mods_dir = game_dir.join("mods");
+    let mods_dir = game_dir.join("profiles").join(render_profile).join("mods");
     fs::create_dir_all(&mods_dir).await?;
     remove_old_managed_client_mods(&mods_dir).await?;
 
-    for managed in MANAGED_MODS {
+    for managed in managed_mods_for_profile(render_profile) {
         if let Err(error) = install_modrinth_mod(app, &mods_dir, managed, version_id).await {
             app.emit(
                 "launch-log",
@@ -417,6 +711,44 @@ async fn install_managed_client_mods(
         }
     }
 
+    Ok(())
+}
+
+async fn sync_profile_mods_to_active_mods(
+    app: &AppHandle,
+    game_dir: &Path,
+    render_profile: &str,
+) -> Result<()> {
+    let active_mods_dir = game_dir.join("mods");
+    let profile_mods_dir = game_dir.join("profiles").join(render_profile).join("mods");
+    fs::create_dir_all(&active_mods_dir).await?;
+    fs::create_dir_all(&profile_mods_dir).await?;
+
+    let mut active_entries = fs::read_dir(&active_mods_dir).await?;
+    while let Some(entry) = active_entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("jar") {
+            fs::remove_file(path).await?;
+        }
+    }
+
+    let mut copied = 0usize;
+    let mut profile_entries = fs::read_dir(&profile_mods_dir).await?;
+    while let Some(entry) = profile_entries.next_entry().await? {
+        let source = entry.path();
+        if source.extension().and_then(|ext| ext.to_str()) != Some("jar") {
+            continue;
+        }
+        let destination = active_mods_dir.join(entry.file_name());
+        fs::copy(&source, &destination).await?;
+        copied += 1;
+    }
+
+    app.emit(
+        "launch-log",
+        format!("Synced {copied} {render_profile} profile mod(s) into active mods folder"),
+    )
+    .ok();
     Ok(())
 }
 

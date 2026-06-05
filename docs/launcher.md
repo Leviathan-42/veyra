@@ -17,9 +17,10 @@ The UI handles:
 
 - Microsoft sign-in button/state
 - Minecraft version selection
-- Java path input
+- Java runtime auto-detection + manual Java path input
+- OpenGL/VulkanMod render profile selection
 - launch button
-- mods folder/library panel
+- per-profile mods folder/library panel
 - popular server panel with copy-IP and quick-play launch buttons
 - process logs streamed from the Rust backend
 
@@ -30,10 +31,14 @@ Important invoke commands used by the frontend:
 - `auth_load_saved`
 - `auth_sign_out`
 - `list_versions`
-- `install_and_launch` — accepts optional `quickPlayServer` for direct server launch
+- `detect_java_runtimes`
+- `install_and_launch` — accepts optional `quickPlayServer` and render profile for direct server launch
 - `mods_dir`
+- `profile_mods_dir`
 - `list_installed_mods`
+- `list_profile_installed_mods`
 - `open_mods_folder`
+- `open_profile_mods_folder`
 
 ## Rust backend
 
@@ -64,13 +69,17 @@ Refresh tokens are stored through the OS keyring when possible, with account met
 1. Load/refresh account.
 2. Create the launcher game directory.
 3. Sync local development Veyra mod jar if built.
-4. Download compatible Fabric/VulkanMod client mods from Modrinth when available.
-5. Download selected Minecraft version metadata/client jar.
-5. Download libraries/assets/natives.
-6. Install Fabric loader/runtime libraries.
-7. Build JVM and game args.
-9. Optionally append a `--quickPlayMultiplayer` target when launched from a server card.
-10. Spawn Java and stream stdout/stderr back to the UI.
+4. Detect/use the newest compatible Java runtime when no manual Java path is provided.
+5. Download compatible profile mods from Modrinth when available:
+   - Vulkan profile: lean VulkanMod stack.
+   - OpenGL profile: Iris/Sodium/performance stack.
+6. Mirror the selected profile's mods folder into the active Minecraft `mods/` folder.
+7. Download selected Minecraft version metadata/client jar.
+8. Download libraries/assets/natives.
+9. Install Fabric loader/runtime libraries.
+10. Build JVM and game args.
+11. Optionally append a `--quickPlayMultiplayer` target when launched from a server card.
+12. Spawn Java and stream stdout/stderr back to the UI.
 
 ## Development mod sync
 
@@ -82,12 +91,29 @@ mod/build/libs/block-tracker-0.1.0.jar
 
 it is copied into the launcher's managed `mods/` folder before launch. Old `block-tracker-*.jar` files are removed first.
 
-## Managed client mods
+## Render profiles and managed client mods
 
-On launch, Veyra tries to install compatible Fabric builds for the selected Minecraft version:
+Veyra has separate profile mod folders under:
+
+```text
+<VeyraLauncher>/minecraft/profiles/<profile>/mods
+```
+
+On launch, the selected profile folder is mirrored into Minecraft's active `mods/` folder.
+
+### VulkanMod profile
+
+Lean profile intended for VulkanMod compatibility:
+
+- VulkanMod
+
+### OpenGL profile
+
+OpenGL/Iris profile intended for standard shader and performance mod use:
 
 - Fabric API
-- VulkanMod
+- Sodium
+- Iris Shaders
 - Lithium
 - FerriteCore
 - EntityCulling
@@ -95,7 +121,11 @@ On launch, Veyra tries to install compatible Fabric builds for the selected Mine
 - Cloth Config API
 - Noisium
 - Krypton
+- ImmediatelyFast
+- More Culling
+- Enhanced Block Entities
+- Dynamic FPS
 
-Veyra intentionally does not install Sodium, Iris Shaders, ImmediatelyFast, More Culling, Enhanced Block Entities, or Dynamic FPS because those are listed as incompatible or visually broken with VulkanMod.
+The launcher can open the selected profile's mods folder so users can add their own profile-specific mods.
 
 If Modrinth has no compatible build for a selected version, the launcher logs a skip and continues launching.

@@ -26,6 +26,16 @@
     size_bytes: number;
   };
 
+  type JavaRuntime = {
+    path: string;
+    version: number | null;
+    version_string: string;
+    vendor: string;
+    compatible: boolean;
+  };
+
+  type RenderProfile = 'vulkan' | 'opengl';
+
   type PopularServer = {
     name: string;
     ip: string;
@@ -75,8 +85,10 @@
   let account: Account | null = null;
   let versions: VersionChoice[] = [];
   let installedMods: InstalledMod[] = [];
+  let javaRuntimes: JavaRuntime[] = [];
   let selectedVersion = '';
-  let javaPath = '/opt/homebrew/opt/java/bin/java';
+  let javaPath = '';
+  let renderProfile: RenderProfile = 'vulkan';
   let windowWidth = 1920;
   let windowHeight = 1080;
   let fullscreen = true;
@@ -115,7 +127,7 @@
       status = String(error);
     }
 
-    await Promise.all([loadVersions(), loadMods()]);
+    await Promise.all([loadVersions(), loadJavaRuntimes(), loadMods()]);
   });
 
   async function loadVersions() {
@@ -132,10 +144,23 @@
     }
   }
 
+  async function loadJavaRuntimes() {
+    try {
+      javaRuntimes = await invoke<JavaRuntime[]>('detect_java_runtimes');
+      const best = javaRuntimes.find((runtime) => runtime.compatible) ?? javaRuntimes[0];
+      if (best && !javaPath) {
+        javaPath = best.path;
+        status = `Detected ${best.vendor} Java ${best.version ?? '?'} runtime`;
+      }
+    } catch (error) {
+      status = `Java auto-detect failed: ${String(error)}`;
+    }
+  }
+
   async function loadMods() {
     try {
-      modsPath = await invoke<string>('mods_dir');
-      installedMods = await invoke<InstalledMod[]>('list_installed_mods');
+      modsPath = await invoke<string>('profile_mods_dir', { renderProfile });
+      installedMods = await invoke<InstalledMod[]>('list_profile_installed_mods', { renderProfile });
     } catch (error) {
       status = String(error);
     }
@@ -176,7 +201,12 @@
   }
 
   async function openModsFolder() {
-    await invoke('open_mods_folder');
+    await invoke('open_profile_mods_folder', { renderProfile });
+    await loadMods();
+  }
+
+  async function setRenderProfile(profile: RenderProfile) {
+    renderProfile = profile;
     await loadMods();
   }
 
@@ -192,7 +222,8 @@
         quickPlayServer: server?.ip ?? null,
         windowWidth,
         windowHeight,
-        fullscreen
+        fullscreen,
+        renderProfile
       });
       status = server
         ? `Minecraft started for ${server.name} with process id ${result.pid}`
@@ -277,7 +308,7 @@
               <span>Instance</span>
               <h2>Veyra Fabric Runtime</h2>
             </div>
-            <button class="secondary" on:click={loadVersions}>Refresh</button>
+            <button class="secondary" on:click={async () => { await loadVersions(); await loadJavaRuntimes(); }}>Refresh</button>
           </div>
 
           <div class="fields two">
@@ -291,8 +322,33 @@
             </label>
 
             <label>
+              <span>Render Backend</span>
+              <select bind:value={renderProfile} on:change={() => setRenderProfile(renderProfile)}>
+                <option value="vulkan">VulkanMod — lean Vulkan profile</option>
+                <option value="opengl">OpenGL — Iris + performance mods</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="fields two">
+            <label>
               <span>Java Runtime</span>
-              <input bind:value={javaPath} />
+              <select bind:value={javaPath}>
+                {#if javaRuntimes.length === 0}
+                  <option value="">Auto-detect on launch</option>
+                {:else}
+                  {#each javaRuntimes as runtime}
+                    <option value={runtime.path}>
+                      Java {runtime.version ?? '?'} · {runtime.vendor} {runtime.compatible ? '' : '(below Java 25)'}
+                    </option>
+                  {/each}
+                {/if}
+              </select>
+            </label>
+
+            <label>
+              <span>Java Path</span>
+              <input bind:value={javaPath} placeholder="Auto-detect newest compatible Java" />
             </label>
           </div>
 
@@ -320,7 +376,7 @@
             </article>
             <article>
               <span>Renderer</span>
-              <strong>VulkanMod</strong>
+              <strong>{renderProfile === 'vulkan' ? 'VulkanMod' : 'OpenGL + Iris'}</strong>
             </article>
             <article>
               <span>Launch Stack</span>
@@ -355,15 +411,23 @@
           <div class="card-head">
             <div>
               <span>Library</span>
-              <h2>Managed Fabric Mods</h2>
+              <h2>{renderProfile === 'vulkan' ? 'VulkanMod' : 'OpenGL'} Profile Mods</h2>
             </div>
             <div class="row">
+              <select bind:value={renderProfile} on:change={() => setRenderProfile(renderProfile)}>
+                <option value="vulkan">VulkanMod mods</option>
+                <option value="opengl">OpenGL mods</option>
+              </select>
               <button class="secondary" on:click={loadMods}>Refresh</button>
               <button class="primary" on:click={openModsFolder}>Open Folder</button>
             </div>
           </div>
 
           <code class="path">{modsPath}</code>
+          <p class="hint">
+            Launch copies this profile folder into Minecraft's active mods folder. Add your own
+            OpenGL-only mods here when the OpenGL profile is selected.
+          </p>
 
           <div class="mods-list">
             {#if installedMods.length === 0}
