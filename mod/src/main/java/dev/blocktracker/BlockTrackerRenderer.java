@@ -22,6 +22,9 @@ public final class BlockTrackerRenderer {
     private static final int HOSTILE_STROKE = 0xF0FB7185;
     private static final int WAYPOINT_COLOR = 0xF0FFC857;
     private static final int DEATH_COLOR = 0xF0FB7185;
+    private static final int WAYPOINT_BEAM_COLOR = 0xC0FFC857;
+    private static final int DEATH_BEAM_COLOR = 0xD0FB7185;
+    private static final double BEAM_HALF_WIDTH = 0.18D;
     private static final double ENTITY_ESP_RANGE_SQ = 128.0D * 128.0D;
     private static final int MAX_ENTITY_BOXES = 96;
 
@@ -84,19 +87,38 @@ public final class BlockTrackerRenderer {
 
         for (BlockTrackerState.Waypoint waypoint : BlockTrackerState.waypoints()) {
             BlockPos pos = waypoint.pos();
-            if (!level.hasChunkAt(pos)) {
-                continue;
-            }
-
-            Gizmos.cuboid(pos, WAYPOINT_STYLE)
-                    .setAlwaysOnTop();
+            emitBeacon(level, pos, WAYPOINT_BEAM_COLOR, WAYPOINT_STYLE);
         }
 
         BlockPos death = BlockTrackerState.deathMarker();
-        if (death != null && level.hasChunkAt(death)) {
-            Gizmos.cuboid(death, DEATH_STYLE)
+        if (death != null) {
+            emitBeacon(level, death, DEATH_BEAM_COLOR, DEATH_STYLE);
+        }
+    }
+
+    private static void emitBeacon(Level level, BlockPos pos, int color, GizmoStyle baseStyle) {
+        double x = pos.getX() + 0.5D;
+        double z = pos.getZ() + 0.5D;
+        double bottom = Math.min(pos.getY(), level.getMinY());
+        double top = Math.max(pos.getY() + 1.0D, level.getMaxY());
+
+        // A single thick line can look too much like a tracer from some angles,
+        // so draw a small column: center + four edge lines, beacon-style.
+        emitBeamLine(x, z, bottom, top, color, 12.0F);
+        emitBeamLine(x - BEAM_HALF_WIDTH, z - BEAM_HALF_WIDTH, bottom, top, color, 5.0F);
+        emitBeamLine(x + BEAM_HALF_WIDTH, z - BEAM_HALF_WIDTH, bottom, top, color, 5.0F);
+        emitBeamLine(x - BEAM_HALF_WIDTH, z + BEAM_HALF_WIDTH, bottom, top, color, 5.0F);
+        emitBeamLine(x + BEAM_HALF_WIDTH, z + BEAM_HALF_WIDTH, bottom, top, color, 5.0F);
+
+        if (level.hasChunkAt(pos)) {
+            Gizmos.cuboid(pos, baseStyle)
                     .setAlwaysOnTop();
         }
+    }
+
+    private static void emitBeamLine(double x, double z, double bottom, double top, int color, float width) {
+        Gizmos.line(new Vec3(x, bottom, z), new Vec3(x, top, z), color, width)
+                .setAlwaysOnTop();
     }
 
     private static void emitEntityEsp(Minecraft client) {
