@@ -6,7 +6,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Locale;
+
 public final class VeyraFreecam {
+    private static final double MIN_SPEED_MULTIPLIER = 0.2D;
+    private static final double MAX_SPEED_MULTIPLIER = 4.0D;
+    private static final double SPEED_STEP = 0.1D;
+
     private static boolean enabled;
     private static boolean cWasDown;
     private static Vec3 position;
@@ -20,6 +26,7 @@ public final class VeyraFreecam {
     private static boolean up;
     private static boolean down;
     private static boolean fast;
+    private static double speedMultiplier = 1.0D;
 
     private VeyraFreecam() {
     }
@@ -38,6 +45,28 @@ public final class VeyraFreecam {
 
     public static float pitch() {
         return pitch;
+    }
+
+    public static double speedMultiplier() {
+        return speedMultiplier;
+    }
+
+    public static double speedRatio() {
+        return (speedMultiplier - MIN_SPEED_MULTIPLIER) / (MAX_SPEED_MULTIPLIER - MIN_SPEED_MULTIPLIER);
+    }
+
+    public static String speedText() {
+        return String.format(Locale.ROOT, "%.1fx", speedMultiplier);
+    }
+
+    public static void adjustSpeed(double scrollAmount) {
+        if (scrollAmount == 0.0D) {
+            return;
+        }
+
+        double steps = Math.max(1.0D, Math.round(Math.abs(scrollAmount)));
+        double delta = Math.copySign(SPEED_STEP * steps, scrollAmount);
+        speedMultiplier = clamp(speedMultiplier + delta, MIN_SPEED_MULTIPLIER, MAX_SPEED_MULTIPLIER);
     }
 
     public static void turn(double x, double y) {
@@ -85,7 +114,7 @@ public final class VeyraFreecam {
             position = client.player.getEyePosition();
         }
 
-        double speedPerTick = fast ? 0.82D : 0.38D;
+        double speedPerTick = (fast ? 0.82D : 0.38D) * speedMultiplier;
         double speed = speedPerTick * Math.max(0.0F, Math.min(deltaTicks, 3.0F));
         double yaw = Math.toRadians(VeyraFreecam.yaw);
         double forwardX = -Math.sin(yaw);
@@ -150,6 +179,10 @@ public final class VeyraFreecam {
         up = false;
         down = false;
         fast = false;
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static void readFreecamKeys(Minecraft client) {

@@ -13,6 +13,7 @@ import java.util.List;
 
 public final class BlockTrackerState {
     private static final int RETARGET_INTERVAL_TICKS = 10;
+    private static final int MAX_BLOCK_TARGETS = 3;
     private static final int MAX_WAYPOINTS = 24;
 
     private BlockTrackerState() {
@@ -23,6 +24,7 @@ public final class BlockTrackerState {
     private static List<Block> targetBlocks = List.of();
     private static BlockPos targetPos;
     private static int retargetCooldownTicks;
+    private static final List<BlockTarget> blockTargets = new ArrayList<>();
 
     private static boolean blockEspEnabled = true;
     private static boolean tracerEnabled = true;
@@ -33,6 +35,11 @@ public final class BlockTrackerState {
     private static boolean hostileEspEnabled = false;
     private static boolean statsHudEnabled = true;
     private static boolean waypointHudEnabled = true;
+    private static int hudScalePercent = 100;
+    private static boolean hudCompactMode;
+    private static int hudMainX = 8;
+    private static int hudMainY = 8;
+    private static final List<HudModuleState> hudModules = new ArrayList<>();
     private static boolean fullbrightEnabled = false;
     private static boolean customCrosshairEnabled = true;
     private static int crosshairStyle;
@@ -41,16 +48,52 @@ public final class BlockTrackerState {
     private static BlockPos deathMarker;
     private static final List<Waypoint> waypoints = new ArrayList<>();
 
+    static {
+        for (HudModule module : HudModule.values()) {
+            hudModules.add(new HudModuleState(module, true, false, module.defaultX, module.defaultY));
+        }
+    }
+
     public static void setTarget(Identifier id, Block block, BlockPos pos) {
         setTarget(id, List.of(block), pos);
     }
 
     public static void setTarget(Identifier id, List<Block> blocks, BlockPos pos) {
-        targetId = id;
-        targetBlock = blocks.isEmpty() ? null : blocks.getFirst();
-        targetBlocks = List.copyOf(blocks);
-        targetPos = pos;
+        blockTargets.clear();
+        addTarget(id, blocks, pos);
+    }
+
+    public static void addTarget(Identifier id, List<Block> blocks, BlockPos pos) {
+        if (id == null || blocks == null || blocks.isEmpty()) {
+            return;
+        }
+
+        blockTargets.removeIf(target -> target.id().equals(id));
+        if (blockTargets.size() >= MAX_BLOCK_TARGETS) {
+            blockTargets.removeFirst();
+        }
+
+        blockTargets.add(new BlockTarget(id, List.copyOf(blocks), pos));
+        syncPrimaryTarget();
         retargetCooldownTicks = 0;
+    }
+
+    public static int maxBlockTargets() {
+        return MAX_BLOCK_TARGETS;
+    }
+
+    public static List<BlockTarget> blockTargets() {
+        return List.copyOf(blockTargets);
+    }
+
+    public static void updateBlockTargetPos(int index, BlockPos pos) {
+        if (index < 0 || index >= blockTargets.size()) {
+            return;
+        }
+
+        BlockTarget target = blockTargets.get(index);
+        blockTargets.set(index, new BlockTarget(target.id(), target.blocks(), pos));
+        syncPrimaryTarget();
     }
 
     public static Identifier targetId() {
@@ -71,10 +114,11 @@ public final class BlockTrackerState {
 
     public static void setTargetPos(BlockPos pos) {
         targetPos = pos;
+        updateBlockTargetPos(0, pos);
     }
 
     public static boolean hasBlockTarget() {
-        return targetId != null && targetBlock != null;
+        return !blockTargets.isEmpty();
     }
 
     public static boolean blockEspEnabled() {
@@ -139,6 +183,74 @@ public final class BlockTrackerState {
 
     public static void toggleStatsHud() {
         statsHudEnabled = !statsHudEnabled;
+    }
+
+    public static int hudScalePercent() {
+        return hudScalePercent;
+    }
+
+    public static void setHudScalePercent(int scale) {
+        hudScalePercent = Math.max(60, Math.min(160, scale));
+    }
+
+    public static void increaseHudScale() {
+        setHudScalePercent(hudScalePercent + 10);
+    }
+
+    public static void decreaseHudScale() {
+        setHudScalePercent(hudScalePercent - 10);
+    }
+
+    public static boolean hudCompactMode() {
+        return hudCompactMode;
+    }
+
+    public static void toggleHudCompactMode() {
+        hudCompactMode = !hudCompactMode;
+    }
+
+    public static int hudMainX() {
+        return hudMainX;
+    }
+
+    public static int hudMainY() {
+        return hudMainY;
+    }
+
+    public static void moveHudMain(int x, int y) {
+        hudMainX = Math.max(0, x);
+        hudMainY = Math.max(0, y);
+    }
+
+    public static List<HudModuleState> hudModules() {
+        return List.copyOf(hudModules);
+    }
+
+    public static HudModuleState hudModuleState(HudModule module) {
+        return hudModules.get(module.ordinal());
+    }
+
+    public static boolean hudModuleEnabled(HudModule module) {
+        return hudModuleState(module).enabled();
+    }
+
+    public static boolean hudModuleDetached(HudModule module) {
+        return hudModuleState(module).detached();
+    }
+
+    public static void toggleHudModule(HudModule module) {
+        HudModuleState state = hudModuleState(module);
+        hudModules.set(module.ordinal(), new HudModuleState(module, !state.enabled(), state.detached(), state.x(), state.y()));
+    }
+
+    public static void toggleHudModuleDetached(HudModule module) {
+        HudModuleState state = hudModuleState(module);
+        hudModules.set(module.ordinal(), new HudModuleState(module, state.enabled(), !state.detached(), state.x(), state.y()));
+    }
+
+    public static void moveHudModule(HudModule module, int x, int y) {
+        HudModuleState state = hudModuleState(module);
+        hudModules.set(module.ordinal(), new HudModuleState(module, state.enabled(), state.detached(), Math.max(0, x), Math.max(0, y)));
     }
 
     public static boolean waypointHudEnabled() {
@@ -285,11 +397,54 @@ public final class BlockTrackerState {
     }
 
     public static void clear() {
-        targetId = null;
-        targetBlock = null;
-        targetBlocks = List.of();
-        targetPos = null;
+        blockTargets.clear();
+        syncPrimaryTarget();
         retargetCooldownTicks = 0;
+    }
+
+    private static void syncPrimaryTarget() {
+        if (blockTargets.isEmpty()) {
+            targetId = null;
+            targetBlock = null;
+            targetBlocks = List.of();
+            targetPos = null;
+            return;
+        }
+
+        BlockTarget primary = blockTargets.getFirst();
+        targetId = primary.id();
+        targetBlocks = primary.blocks();
+        targetBlock = targetBlocks.isEmpty() ? null : targetBlocks.getFirst();
+        targetPos = primary.pos();
+    }
+
+    public record BlockTarget(Identifier id, List<Block> blocks, BlockPos pos) {
+    }
+
+    public enum HudModule {
+        POSITION("Position", 8, 8),
+        FPS("FPS / Ping", 8, 42),
+        RAM("RAM", 8, 76),
+        DURABILITY("Durability", 8, 110),
+        EFFECTS("Effects", 8, 178),
+        WAYPOINTS("Waypoints", 220, 8);
+
+        private final String title;
+        private final int defaultX;
+        private final int defaultY;
+
+        HudModule(String title, int defaultX, int defaultY) {
+            this.title = title;
+            this.defaultX = defaultX;
+            this.defaultY = defaultY;
+        }
+
+        public String title() {
+            return title;
+        }
+    }
+
+    public record HudModuleState(HudModule module, boolean enabled, boolean detached, int x, int y) {
     }
 
     public record Waypoint(String name, BlockPos pos) {

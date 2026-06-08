@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dist": "tauri build",
+    "bundle": "tauri build"
   },
   "dependencies": {
     "@sveltejs/adapter-static": "^3.0.8",

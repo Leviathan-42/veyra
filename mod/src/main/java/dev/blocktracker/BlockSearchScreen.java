@@ -83,7 +83,7 @@ public final class BlockSearchScreen extends Screen {
 
         List<Block> targets = oreVariants(id, block);
         BlockPos nearest = BlockScan.findClosest(Minecraft.getInstance(), targets, BlockScan.DEFAULT_CHUNK_RADIUS);
-        BlockTrackerState.setTarget(id, targets, nearest);
+        BlockTrackerState.addTarget(id, targets, nearest);
 
         if (nearest == null) {
             status = Component.literal("No matching loaded block found");
@@ -95,7 +95,13 @@ public final class BlockSearchScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (event.key() == InputConstants.KEY_BACKSLASH) {
+        if (VeyraKeybinds.cancelBlockSearchMatches(event)) {
+            BlockTrackerState.clear();
+            Minecraft.getInstance().setScreen(null);
+            return true;
+        }
+
+        if (VeyraKeybinds.openSearchMatches(event)) {
             Minecraft.getInstance().setScreen(null);
             return true;
         }
@@ -127,6 +133,11 @@ public final class BlockSearchScreen extends Screen {
 
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick) {
+        if (VeyraKeybinds.openSearchMatches(event)) {
+            Minecraft.getInstance().setScreen(null);
+            return true;
+        }
+
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int index = suggestionIndexAt(event.x(), event.y());
             if (index >= 0) {
@@ -149,8 +160,8 @@ public final class BlockSearchScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         VeyraUi.screenBackground(graphics, this.width, this.height, true);
         VeyraUi.panel(graphics, boxX - 16, boxY, boxWidth + 32, 214);
-        VeyraUi.text(graphics, this.font, "Block search", boxX, boxY + 12, 0xFFF4F7FA);
-        VeyraUi.text(graphics, this.font, "Type a block, pick a suggestion, then track it", boxX, boxY + 27, 0xFF8B96A5);
+        VeyraUi.text(graphics, this.font, "Block search", boxX, boxY + 12, VeyraUi.TEXT);
+        VeyraUi.text(graphics, this.font, "Track up to " + BlockTrackerState.maxBlockTargets() + " blocks; oldest is replaced after that", boxX, boxY + 27, VeyraUi.MUTED);
         VeyraUi.button(graphics, boxX, boxY + 34, boxWidth, 22, true, false);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -158,8 +169,8 @@ public final class BlockSearchScreen extends Screen {
         extractSuggestions(graphics, mouseX, mouseY);
         VeyraUi.button(graphics, boxX, buttonY, boxWidth, 22, true,
                 mouseX >= boxX && mouseX <= boxX + boxWidth && mouseY >= buttonY && mouseY <= buttonY + 22);
-        VeyraUi.centeredText(graphics, this.font, "Track", this.width / 2, buttonY + 7, 0xFFF4F7FA);
-        VeyraUi.centeredText(graphics, this.font, status.getString(), this.width / 2, statusY, 0xFF8B96A5);
+        VeyraUi.centeredText(graphics, this.font, "Track", this.width / 2, buttonY + 7, VeyraUi.TEXT);
+        VeyraUi.centeredText(graphics, this.font, status.getString(), this.width / 2, statusY, VeyraUi.MUTED);
     }
 
     private void updateSuggestions(String raw) {
@@ -256,7 +267,7 @@ public final class BlockSearchScreen extends Screen {
         graphics.outline(boxX, suggestionsY, boxWidth, height, VeyraUi.EDGE);
 
         if (suggestions.isEmpty()) {
-            VeyraUi.text(graphics, this.font, "No close blocks found", boxX + 8, suggestionsY + 7, 0xFF8795A5);
+            VeyraUi.text(graphics, this.font, "No close blocks found", boxX + 8, suggestionsY + 7, VeyraUi.MUTED);
             return;
         }
 
@@ -268,7 +279,7 @@ public final class BlockSearchScreen extends Screen {
 
             if (selected || hovered) {
                 graphics.fill(boxX + 1, rowY + 1, boxX + boxWidth - 1, rowY + SUGGESTION_ROW_HEIGHT - 1,
-                        selected ? 0x6638BDF8 : 0x552A313C);
+                        selected ? VeyraUi.withAlpha(VeyraUi.ACCENT, 0x66) : VeyraUi.SURFACE_HOVER);
             }
 
             String id = suggestion.id().toString();
@@ -276,10 +287,10 @@ public final class BlockSearchScreen extends Screen {
             int labelMaxWidth = idWidth < boxWidth / 2 ? boxWidth - idWidth - 22 : boxWidth - 12;
             String label = fitText(suggestion.label(), labelMaxWidth);
 
-            VeyraUi.text(graphics, this.font, label, boxX + 7, rowY + 5, 0xFFFFFFFF);
+            VeyraUi.text(graphics, this.font, label, boxX + 7, rowY + 5, VeyraUi.TEXT);
 
             if (idWidth < boxWidth / 2) {
-                VeyraUi.text(graphics, this.font, id, boxX + boxWidth - idWidth - 7, rowY + 5, 0xFF91A4B8);
+                VeyraUi.text(graphics, this.font, id, boxX + boxWidth - idWidth - 7, rowY + 5, VeyraUi.SUBTLE);
             }
         }
     }

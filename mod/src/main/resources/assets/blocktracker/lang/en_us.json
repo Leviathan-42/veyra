@@ -4,5 +4,9 @@
   "message.blocktracker.unknown_block": "Unknown block",
   "message.blocktracker.no_matches": "No close block matches",
   "message.blocktracker.suggestions": "Press Enter to track the selected result",
-  "message.blocktracker.tracking": "Tracking %s"
+  "message.blocktracker.tracking": "Tracking %s",
+  "key.categories.blocktracker.veyra": "Veyra",
+  "key.blocktracker.open_search": "Open Veyra Search",
+  "key.blocktracker.open_menu": "Open Veyra Menu",
+  "key.blocktracker.toggle_freecam": "Toggle Veyra Freecam"
 }

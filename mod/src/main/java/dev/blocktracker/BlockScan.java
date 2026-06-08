@@ -9,7 +9,7 @@ import net.minecraft.world.level.block.Block;
 import java.util.Collection;
 
 public final class BlockScan {
-    public static final int DEFAULT_CHUNK_RADIUS = 12;
+    public static final int DEFAULT_CHUNK_RADIUS = 20;
 
     private BlockScan() {
     }

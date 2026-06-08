@@ -16,7 +16,11 @@ import java.util.List;
 
 public final class BlockTrackerRenderer {
     private static final int BOX_STROKE = 0xF0FFC857;
+    private static final int BOX_STROKE_2 = 0xF05EEAD4;
+    private static final int BOX_STROKE_3 = 0xF0C084FC;
     private static final int LINE_COLOR = 0xF0FFC857;
+    private static final int LINE_COLOR_2 = 0xF05EEAD4;
+    private static final int LINE_COLOR_3 = 0xF0C084FC;
     private static final int PLAYER_STROKE = 0xF05EEAD4;
     private static final int ANIMAL_STROKE = 0xF0A7F3D0;
     private static final int HOSTILE_STROKE = 0xF0FB7185;
@@ -25,10 +29,14 @@ public final class BlockTrackerRenderer {
     private static final int WAYPOINT_BEAM_COLOR = 0xC0FFC857;
     private static final int DEATH_BEAM_COLOR = 0xD0FB7185;
     private static final double BEAM_HALF_WIDTH = 0.18D;
-    private static final double ENTITY_ESP_RANGE_SQ = 128.0D * 128.0D;
-    private static final int MAX_ENTITY_BOXES = 96;
+    private static final double ENTITY_ESP_RANGE_SQ = 256.0D * 256.0D;
+    private static final int MAX_ENTITY_BOXES = 192;
 
     private static final GizmoStyle BOX_STYLE = GizmoStyle.stroke(BOX_STROKE, 2.0F);
+    private static final GizmoStyle BOX_STYLE_2 = GizmoStyle.stroke(BOX_STROKE_2, 2.0F);
+    private static final GizmoStyle BOX_STYLE_3 = GizmoStyle.stroke(BOX_STROKE_3, 2.0F);
+    private static final GizmoStyle[] BLOCK_STYLES = {BOX_STYLE, BOX_STYLE_2, BOX_STYLE_3};
+    private static final int[] BLOCK_LINE_COLORS = {LINE_COLOR, LINE_COLOR_2, LINE_COLOR_3};
     private static final GizmoStyle PLAYER_STYLE = GizmoStyle.stroke(PLAYER_STROKE, 2.0F);
     private static final GizmoStyle ANIMAL_STYLE = GizmoStyle.stroke(ANIMAL_STROKE, 2.0F);
     private static final GizmoStyle HOSTILE_STYLE = GizmoStyle.stroke(HOSTILE_STROKE, 2.0F);
@@ -47,23 +55,39 @@ public final class BlockTrackerRenderer {
     private static void emitBlockTarget(Minecraft client) {
         Player player = client.player;
         Level level = client.level;
-        BlockPos targetPos = BlockTrackerState.targetPos();
-        List<Block> targetBlocks = BlockTrackerState.targetBlocks();
-        Identifier targetId = BlockTrackerState.targetId();
+        List<BlockTrackerState.BlockTarget> targets = BlockTrackerState.blockTargets();
 
-        if (player == null || level == null || targetPos == null || targetBlocks.isEmpty() || targetId == null) {
+        if (player == null || level == null || targets.isEmpty()) {
             return;
         }
 
-        if (!level.hasChunkAt(targetPos) || targetBlocks.stream().noneMatch(target -> level.getBlockState(targetPos).is(target))) {
+        for (int index = 0; index < targets.size(); index++) {
+            emitBlockTarget(client, player, level, index, targets.get(index));
+        }
+    }
+
+    private static void emitBlockTarget(Minecraft client, Player player, Level level, int index, BlockTrackerState.BlockTarget target) {
+        BlockPos targetPos = target.pos();
+        List<Block> targetBlocks = target.blocks();
+        Identifier targetId = target.id();
+
+        if (targetPos == null || targetBlocks.isEmpty() || targetId == null) {
             if (BlockTrackerState.shouldRetarget()) {
-                BlockTrackerState.setTargetPos(BlockScan.findClosest(client, targetBlocks, BlockScan.DEFAULT_CHUNK_RADIUS));
+                BlockTrackerState.updateBlockTargetPos(index, BlockScan.findClosest(client, targetBlocks, BlockScan.DEFAULT_CHUNK_RADIUS));
             }
             return;
         }
 
+        if (!level.hasChunkAt(targetPos) || targetBlocks.stream().noneMatch(block -> level.getBlockState(targetPos).is(block))) {
+            if (BlockTrackerState.shouldRetarget()) {
+                BlockTrackerState.updateBlockTargetPos(index, BlockScan.findClosest(client, targetBlocks, BlockScan.DEFAULT_CHUNK_RADIUS));
+            }
+            return;
+        }
+
+        int styleIndex = Math.min(index, BLOCK_STYLES.length - 1);
         if (BlockTrackerState.blockEspEnabled()) {
-            Gizmos.cuboid(targetPos, BOX_STYLE)
+            Gizmos.cuboid(targetPos, BLOCK_STYLES[styleIndex])
                     .setAlwaysOnTop();
         }
 
@@ -74,7 +98,7 @@ public final class BlockTrackerRenderer {
         Vec3 start = player.position().add(0.0D, player.getBbHeight() * 0.82D, 0.0D);
         Vec3 end = Vec3.atCenterOf(targetPos);
 
-        Gizmos.line(start, end, LINE_COLOR, 7.0F)
+        Gizmos.line(start, end, BLOCK_LINE_COLORS[styleIndex], 7.0F)
                 .setAlwaysOnTop();
     }
 

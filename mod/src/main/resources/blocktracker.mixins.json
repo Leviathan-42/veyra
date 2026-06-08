@@ -12,6 +12,7 @@
     "HudMixin",
     "LightmapRenderStateExtractorMixin",
     "MinecraftClientMixin",
+    "OptionsMixin",
     "ScreenThemeMixin",
     "TitleScreenThemeMixin"
   ],

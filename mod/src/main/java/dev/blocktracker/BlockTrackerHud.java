@@ -11,6 +11,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -35,8 +36,7 @@ public final class BlockTrackerHud {
         extractCustomCrosshair(graphics);
         extractFreecamHud(client, graphics);
         extractTargetHud(client, graphics);
-        extractStatsHud(client, graphics);
-        extractWaypointHud(client, graphics);
+        extractModulesHud(client, graphics, false);
     }
 
     private static void extractCustomCrosshair(GuiGraphicsExtractor graphics) {
@@ -44,12 +44,13 @@ public final class BlockTrackerHud {
             return;
         }
 
+        Minecraft client = Minecraft.getInstance();
         int x = graphics.guiWidth() / 2;
         int y = graphics.guiHeight() / 2;
         int size = BlockTrackerState.crosshairSize();
         int gap = Math.max(2, size / 2);
-        int color = 0xEAF4F7FA;
-        int accent = 0xFF7DD3FC;
+        int color = crosshairColor(client);
+        int accent = color;
         int outline = 0xAA050608;
 
         switch (BlockTrackerState.crosshairStyle()) {
@@ -76,6 +77,22 @@ public final class BlockTrackerHud {
     private static void drawCrosshairLine(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2, int outline, int color) {
         graphics.fill(x1 - 1, y1 - 1, x2 + 1, y2 + 1, outline);
         graphics.fill(x1, y1, x2, y2, color);
+    }
+
+    private static int crosshairColor(Minecraft client) {
+        if (client == null || client.player == null || client.hitResult == null || client.hitResult.getType() == HitResult.Type.MISS) {
+            return BAD;
+        }
+
+        if (client.crosshairPickEntity != null || client.hitResult.getType() == HitResult.Type.ENTITY) {
+            return GOOD;
+        }
+
+        if (client.hitResult.getType() == HitResult.Type.BLOCK) {
+            return 0xFF22D3EE;
+        }
+
+        return BAD;
     }
 
     private static void extractVulkanSafeWorldOverlay(Minecraft client, GuiGraphicsExtractor graphics) {
@@ -105,10 +122,10 @@ public final class BlockTrackerHud {
         if (BlockTrackerState.entityEspEnabled() && client.level != null) {
             int rendered = 0;
             for (Entity entity : client.level.entitiesForRendering()) {
-                if (rendered >= 48) {
+                if (rendered >= 128) {
                     break;
                 }
-                if (entity == player || !entity.isAlive() || entity.distanceToSqr(player) > 96.0D * 96.0D) {
+                if (entity == player || !entity.isAlive() || entity.distanceToSqr(player) > 256.0D * 256.0D) {
                     continue;
                 }
 
@@ -203,12 +220,21 @@ public final class BlockTrackerHud {
             return;
         }
 
-        String text = "Freecam  C to return";
-        int textWidth = client.font.width(text);
-        int x = (graphics.guiWidth() - textWidth) / 2;
-        int y = graphics.guiHeight() - 54;
-        drawPanel(graphics, x - 7, y - 4, textWidth + 14, 17, 0x887DD3FC);
-        graphics.text(client.font, text, x, y, 0xFF7DD3FC);
+        String text = "Freecam  " + VeyraKeybinds.freecamKeyName() + " to return";
+        String speed = "Scroll speed  " + VeyraFreecam.speedText();
+        int width = Math.max(Math.max(client.font.width(text), client.font.width(speed)), 112) + 14;
+        int x = (graphics.guiWidth() - width) / 2;
+        int y = graphics.guiHeight() - 66;
+        drawPanel(graphics, x, y - 4, width, 34, 0x887DD3FC);
+        graphics.text(client.font, text, x + 7, y, 0xFF7DD3FC);
+        graphics.text(client.font, speed, x + 7, y + 10, TEXT);
+
+        int barX = x + 7;
+        int barY = y + 23;
+        int barWidth = width - 14;
+        int fillWidth = Math.max(2, (int) Math.round(barWidth * VeyraFreecam.speedRatio()));
+        graphics.fill(barX, barY, barX + barWidth, barY + 3, 0x5538424F);
+        graphics.fill(barX, barY, barX + fillWidth, barY + 3, 0xFF7DD3FC);
     }
 
     private static void extractTargetHud(Minecraft client, GuiGraphicsExtractor graphics) {
@@ -216,86 +242,19 @@ public final class BlockTrackerHud {
             return;
         }
 
-        Identifier id = BlockTrackerState.targetId();
-        BlockPos pos = BlockTrackerState.targetPos();
-        int variantCount = BlockTrackerState.targetBlocks().size();
-        String target = id.toString() + (variantCount > 1 ? " + deepslate" : "");
-        String text = pos == null
-                ? "Tracking " + target + " - no loaded match"
-                : "Tracking " + target + " @ " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
-
-        int textWidth = client.font.width(text);
-        int x = (graphics.guiWidth() - textWidth) / 2;
-        int y = 8;
-        drawPanel(graphics, x - 7, y - 4, textWidth + 14, 17, EDGE);
-        graphics.text(client.font, text, x, y, TEXT);
-    }
-
-    private static void extractStatsHud(Minecraft client, GuiGraphicsExtractor graphics) {
-        if (!BlockTrackerState.statsHudEnabled() || client.player == null) {
-            return;
-        }
-
-        Player player = client.player;
+        List<BlockTrackerState.BlockTarget> targets = BlockTrackerState.blockTargets();
         List<Line> lines = new ArrayList<>();
-        BlockPos pos = player.blockPosition();
-        lines.add(new Line("XYZ " + pos.getX() + " " + pos.getY() + " " + pos.getZ(), TEXT));
-        lines.add(new Line("FPS " + safeFps(client) + "  Ping " + safePing(client, player) + "ms", MUTED));
-        lines.add(new Line("RAM " + ramText(), MUTED));
-
-        String main = durabilityText("Tool", player.getMainHandItem());
-        if (main != null) {
-            lines.add(new Line(main, durabilityColor(player.getMainHandItem())));
-        }
-
-        String offhand = durabilityText("Offhand", player.getOffhandItem());
-        if (offhand != null) {
-            lines.add(new Line(offhand, durabilityColor(player.getOffhandItem())));
-        }
-
-        addArmorLine(lines, player, "Helmet", EquipmentSlot.HEAD);
-        addArmorLine(lines, player, "Chest", EquipmentSlot.CHEST);
-        addArmorLine(lines, player, "Legs", EquipmentSlot.LEGS);
-        addArmorLine(lines, player, "Boots", EquipmentSlot.FEET);
-
-        Collection<MobEffectInstance> effects = player.getActiveEffects();
-        if (!effects.isEmpty()) {
-            int shown = 0;
-            for (MobEffectInstance effect : effects) {
-                if (shown >= 5) {
-                    lines.add(new Line("+" + (effects.size() - shown) + " more effects", MUTED));
-                    break;
-                }
-                lines.add(new Line(effectText(effect), GOOD));
-                shown++;
-            }
-        }
-
-        drawLines(client, graphics, 8, 8, lines, 0x8042A08B);
-    }
-
-    private static void extractWaypointHud(Minecraft client, GuiGraphicsExtractor graphics) {
-        if (!BlockTrackerState.waypointHudEnabled() || client.player == null) {
-            return;
-        }
-
-        List<Line> lines = new ArrayList<>();
-        BlockPos death = BlockTrackerState.deathMarker();
-        if (death != null) {
-            lines.add(new Line("Death " + distanceText(client.player, death), BAD));
-        }
-
-        List<BlockTrackerState.Waypoint> waypoints = new ArrayList<>(BlockTrackerState.waypoints());
-        waypoints.sort(Comparator.comparingDouble(waypoint -> waypoint.pos().distSqr(client.player.blockPosition())));
-
-        int shown = 0;
-        for (BlockTrackerState.Waypoint waypoint : waypoints) {
-            if (shown >= 6) {
-                lines.add(new Line("+" + (waypoints.size() - shown) + " more waypoints", MUTED));
-                break;
-            }
-            lines.add(new Line(waypoint.name() + " " + distanceText(client.player, waypoint.pos()), WARN));
-            shown++;
+        int index = 1;
+        for (BlockTrackerState.BlockTarget blockTarget : targets) {
+            Identifier id = blockTarget.id();
+            BlockPos pos = blockTarget.pos();
+            int variantCount = blockTarget.blocks().size();
+            String target = id.toString() + (variantCount > 1 ? " + deepslate" : "");
+            String text = pos == null
+                    ? index + ". " + target + " - no loaded match"
+                    : index + ". " + target + " @ " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
+            lines.add(new Line(text, blockTargetColor(index - 1)));
+            index++;
         }
 
         if (lines.isEmpty()) {
@@ -303,19 +262,187 @@ public final class BlockTrackerHud {
         }
 
         int width = lines.stream().mapToInt(line -> client.font.width(line.text())).max().orElse(0) + 14;
-        drawLines(client, graphics, graphics.guiWidth() - width - 8, 8, lines, 0x80FFC857);
+        drawLines(client, graphics, (graphics.guiWidth() - width) / 2, 8, lines, EDGE);
+    }
+
+    public static void extractEditPreview(GuiGraphicsExtractor graphics) {
+        extractModulesHud(Minecraft.getInstance(), graphics, true);
+    }
+
+    public static HudBox findHudBox(Minecraft client, int mouseX, int mouseY) {
+        List<HudBox> boxes = buildHudBoxes(client);
+        for (int index = boxes.size() - 1; index >= 0; index--) {
+            HudBox box = boxes.get(index);
+            if (mouseX >= box.x() && mouseX <= box.x() + box.width() && mouseY >= box.y() && mouseY <= box.y() + box.height()) {
+                return box;
+            }
+        }
+        return null;
+    }
+
+    private static void extractModulesHud(Minecraft client, GuiGraphicsExtractor graphics, boolean editMode) {
+        if (!BlockTrackerState.statsHudEnabled() || client.player == null) {
+            return;
+        }
+
+        for (HudBox box : buildHudBoxes(client)) {
+            drawLines(client, graphics, box.x(), box.y(), box.lines(), box.edge(), editMode, box.title());
+        }
+    }
+
+    private static List<HudBox> buildHudBoxes(Minecraft client) {
+        List<HudBox> boxes = new ArrayList<>();
+        if (client.player == null) {
+            return boxes;
+        }
+
+        List<Line> mainLines = new ArrayList<>();
+        for (BlockTrackerState.HudModule module : BlockTrackerState.HudModule.values()) {
+            BlockTrackerState.HudModuleState state = BlockTrackerState.hudModuleState(module);
+            if (!state.enabled()) {
+                continue;
+            }
+
+            List<Line> lines = moduleLines(client, module);
+            if (lines.isEmpty()) {
+                continue;
+            }
+
+            if (state.detached()) {
+                boxes.add(new HudBox(module, state.x(), state.y(), boxWidth(client, lines), boxHeight(lines), module.title(), lines, module == BlockTrackerState.HudModule.WAYPOINTS ? 0x80FFC857 : 0x8042A08B));
+            } else {
+                if (!mainLines.isEmpty() && !BlockTrackerState.hudCompactMode()) {
+                    mainLines.add(new Line("", MUTED));
+                }
+                mainLines.addAll(lines);
+            }
+        }
+
+        if (!mainLines.isEmpty()) {
+            boxes.add(0, new HudBox(null, BlockTrackerState.hudMainX(), BlockTrackerState.hudMainY(), boxWidth(client, mainLines), boxHeight(mainLines), "Main HUD", mainLines, 0x8042A08B));
+        }
+        return boxes;
+    }
+
+    private static List<Line> moduleLines(Minecraft client, BlockTrackerState.HudModule module) {
+        Player player = client.player;
+        if (player == null) {
+            return List.of();
+        }
+
+        boolean compact = BlockTrackerState.hudCompactMode();
+        List<Line> lines = new ArrayList<>();
+        switch (module) {
+            case POSITION -> {
+                BlockPos pos = player.blockPosition();
+                lines.add(new Line((compact ? "XYZ " : "Position ") + pos.getX() + " " + pos.getY() + " " + pos.getZ(), TEXT));
+            }
+            case FPS -> lines.add(new Line("FPS " + safeFps(client) + (compact ? " / " : "  Ping ") + safePing(client, player) + "ms", MUTED));
+            case RAM -> lines.add(new Line((compact ? "RAM " : "Memory ") + ramText(), MUTED));
+            case DURABILITY -> addDurabilityLines(lines, player, compact);
+            case EFFECTS -> addEffectLines(lines, player, compact);
+            case WAYPOINTS -> addWaypointLines(lines, player, compact);
+        }
+        return lines;
+    }
+
+    private static void addDurabilityLines(List<Line> lines, Player player, boolean compact) {
+        String main = durabilityText(compact ? "Tool" : "Main tool", player.getMainHandItem());
+        if (main != null) {
+            lines.add(new Line(main, durabilityColor(player.getMainHandItem())));
+        }
+        String offhand = durabilityText("Offhand", player.getOffhandItem());
+        if (offhand != null && !compact) {
+            lines.add(new Line(offhand, durabilityColor(player.getOffhandItem())));
+        }
+        if (!compact) {
+            addArmorLine(lines, player, "Helmet", EquipmentSlot.HEAD);
+            addArmorLine(lines, player, "Chest", EquipmentSlot.CHEST);
+            addArmorLine(lines, player, "Legs", EquipmentSlot.LEGS);
+            addArmorLine(lines, player, "Boots", EquipmentSlot.FEET);
+        }
+    }
+
+    private static void addEffectLines(List<Line> lines, Player player, boolean compact) {
+        Collection<MobEffectInstance> effects = player.getActiveEffects();
+        int limit = compact ? 2 : 5;
+        int shown = 0;
+        for (MobEffectInstance effect : effects) {
+            if (shown >= limit) {
+                lines.add(new Line("+" + (effects.size() - shown) + " more effects", MUTED));
+                break;
+            }
+            lines.add(new Line(effectText(effect), GOOD));
+            shown++;
+        }
+    }
+
+    private static void addWaypointLines(List<Line> lines, Player player, boolean compact) {
+        if (!BlockTrackerState.waypointHudEnabled()) {
+            return;
+        }
+        BlockPos death = BlockTrackerState.deathMarker();
+        if (death != null) {
+            lines.add(new Line("Death " + distanceText(player, death), BAD));
+        }
+        List<BlockTrackerState.Waypoint> waypoints = new ArrayList<>(BlockTrackerState.waypoints());
+        waypoints.sort(Comparator.comparingDouble(waypoint -> waypoint.pos().distSqr(player.blockPosition())));
+        int limit = compact ? 3 : 6;
+        int shown = 0;
+        for (BlockTrackerState.Waypoint waypoint : waypoints) {
+            if (shown >= limit) {
+                lines.add(new Line("+" + (waypoints.size() - shown) + " more waypoints", MUTED));
+                break;
+            }
+            lines.add(new Line(waypoint.name() + " " + distanceText(player, waypoint.pos()), WARN));
+            shown++;
+        }
+    }
+
+    private static int blockTargetColor(int index) {
+        return switch (index) {
+            case 1 -> 0xFF5EEAD4;
+            case 2 -> 0xFFC084FC;
+            default -> WARN;
+        };
     }
 
     private static void drawLines(Minecraft client, GuiGraphicsExtractor graphics, int x, int y, List<Line> lines, int edge) {
-        int width = lines.stream().mapToInt(line -> client.font.width(line.text())).max().orElse(0) + 14;
-        int height = (lines.size() * 10) + 8;
+        drawLines(client, graphics, x, y, lines, edge, false, "");
+    }
+
+    private static int boxWidth(Minecraft client, List<Line> lines) {
+        return scale(lines.stream().mapToInt(line -> line.text().isEmpty() ? 26 : client.font.width(line.text())).max().orElse(0) + 14);
+    }
+
+    private static int boxHeight(List<Line> lines) {
+        return Math.max(scale(20), scale((lines.size() * 10) + 8));
+    }
+
+    private static void drawLines(Minecraft client, GuiGraphicsExtractor graphics, int x, int y, List<Line> lines, int edge, boolean editMode, String title) {
+        int lineHeight = scale(10);
+        int paddingX = scale(7);
+        int paddingY = scale(5);
+        int width = boxWidth(client, lines);
+        int height = boxHeight(lines) + (editMode ? scale(10) : 0);
         drawPanel(graphics, x, y, width, height, edge);
 
-        int textY = y + 5;
-        for (Line line : lines) {
-            graphics.text(client.font, line.text(), x + 7, textY, line.color());
-            textY += 10;
+        if (editMode) {
+            graphics.fill(x, y, x + width, y + scale(12), 0xAA263340);
+            graphics.text(client.font, title, x + paddingX, y + 2, 0xFF7DD3FC);
         }
+
+        int textY = y + paddingY + (editMode ? scale(10) : 0);
+        for (Line line : lines) {
+            if (!line.text().isEmpty()) {
+                graphics.text(client.font, line.text(), x + paddingX, textY, line.color());
+            }
+            textY += lineHeight;
+        }
+    }
+
+    private static int scale(int value) {
+        return Math.max(1, Math.round(value * (BlockTrackerState.hudScalePercent() / 100.0F)));
     }
 
     private static void drawPanel(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int edge) {
@@ -424,6 +551,9 @@ public final class BlockTrackerHud {
         String northSouth = dz < -1 ? "N" : dz > 1 ? "S" : "";
         String eastWest = dx > 1 ? "E" : dx < -1 ? "W" : "";
         return northSouth + eastWest;
+    }
+
+    public record HudBox(BlockTrackerState.HudModule module, int x, int y, int width, int height, String title, List<Line> lines, int edge) {
     }
 
     private record Line(String text, int color) {

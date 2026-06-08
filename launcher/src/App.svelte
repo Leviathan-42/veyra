@@ -35,52 +35,7 @@
   };
 
   type RenderProfile = 'vulkan' | 'opengl';
-
-  type PopularServer = {
-    name: string;
-    ip: string;
-    mode: string;
-    note: string;
-  };
-
-  const popularServers: PopularServer[] = [
-    {
-      name: 'Hypixel',
-      ip: 'mc.hypixel.net',
-      mode: 'Minigames',
-      note: 'Bed Wars, SkyBlock, Duels'
-    },
-    {
-      name: 'DonutSMP',
-      ip: 'donutsmp.net',
-      mode: 'SMP',
-      note: 'Survival economy / PvP'
-    },
-    {
-      name: 'CubeCraft',
-      ip: 'play.cubecraft.net',
-      mode: 'Minigames',
-      note: 'SkyWars, EggWars, parkour'
-    },
-    {
-      name: 'Minehut',
-      ip: 'mc.minehut.com',
-      mode: 'Server Hub',
-      note: 'Community-hosted servers'
-    },
-    {
-      name: 'PikaNetwork',
-      ip: 'play.pika-network.net',
-      mode: 'Network',
-      note: 'SkyBlock, factions, survival'
-    },
-    {
-      name: 'OPBlocks',
-      ip: 'sm.opblocks.com',
-      mode: 'Prison / SkyBlock',
-      note: 'Progression servers'
-    }
-  ];
+  type NavView = 'play' | 'mods' | 'settings' | 'logs';
 
   let account: Account | null = null;
   let versions: VersionChoice[] = [];
@@ -89,6 +44,7 @@
   let selectedVersion = '';
   let javaPath = '';
   let renderProfile: RenderProfile = 'vulkan';
+  let activeView: NavView = 'play';
   let windowWidth = 1920;
   let windowHeight = 1080;
   let fullscreen = true;
@@ -98,7 +54,6 @@
   let launchLogs: string[] = [];
   let authBusy = false;
   let launchBusy = false;
-  let activePanel: 'launch' | 'mods' | 'servers' = 'launch';
 
   $: canLaunch = !!account && !!selectedVersion && !launchBusy;
 
@@ -210,37 +165,26 @@
     await loadMods();
   }
 
-  async function launch(server: PopularServer | null = null) {
+  async function launch() {
     launchBusy = true;
     launchLogs = [];
-    status = server ? `Preparing ${server.name}` : `Installing ${selectedVersion}`;
+    status = `Installing ${selectedVersion}`;
 
     try {
       const result = await invoke<{ pid: number }>('install_and_launch', {
         javaPath,
         versionId: selectedVersion,
-        quickPlayServer: server?.ip ?? null,
+        quickPlayServer: null,
         windowWidth,
         windowHeight,
         fullscreen,
         renderProfile
       });
-      status = server
-        ? `Minecraft started for ${server.name} with process id ${result.pid}`
-        : `Minecraft started with process id ${result.pid}`;
+      status = `Minecraft started with process id ${result.pid}`;
     } catch (error) {
       status = String(error);
     } finally {
       launchBusy = false;
-    }
-  }
-
-  async function copyServerIp(server: PopularServer) {
-    try {
-      await navigator.clipboard.writeText(server.ip);
-      status = `Copied ${server.name}: ${server.ip}`;
-    } catch {
-      status = `${server.name}: ${server.ip}`;
     }
   }
 
@@ -251,248 +195,194 @@
   }
 </script>
 
-<main class="app">
-  <aside class="rail">
-    <section class="brand">
-      <div class="mark">VY</div>
-      <div>
-        <span>Control Layer</span>
-        <h1>Veyra</h1>
-      </div>
-    </section>
-
-    <nav class="nav">
-      <button class:active={activePanel === 'launch'} on:click={() => (activePanel = 'launch')}>
-        <span>Play</span>
+<main class="shell">
+  <aside class="icon-rail" aria-label="Veyra navigation">
+    <div class="app-dot">V</div>
+    <nav class="rail-icons">
+      <button class:active={activeView === 'play'} title="Play" on:click={() => (activeView = 'play')}>
+        <span class="rail-glyph">▶</span>
+        <span class="rail-label">Play</span>
       </button>
-      <button class:active={activePanel === 'mods'} on:click={() => (activePanel = 'mods')}>
-        <span>Library</span>
+      <button class:active={activeView === 'mods'} title="Mods" on:click={() => (activeView = 'mods')}>
+        <span class="rail-glyph">◆</span>
+        <span class="rail-label">Mods</span>
       </button>
-      <button class:active={activePanel === 'servers'} on:click={() => (activePanel = 'servers')}>
-        <span>Servers</span>
+      <button class:active={activeView === 'settings'} title="Settings" on:click={() => (activeView = 'settings')}>
+        <span class="rail-glyph">⚙</span>
+        <span class="rail-label">Settings</span>
+      </button>
+      <button class:active={activeView === 'logs'} title="Logs" on:click={() => (activeView = 'logs')}>
+        <span class="rail-glyph">▤</span>
+        <span class="rail-label">Logs</span>
       </button>
     </nav>
-
-    <section class="account">
-      <span>Microsoft</span>
-      <strong>{account?.profile.name ?? 'Offline'}</strong>
-      {#if authPath}
-        <small>{authPath}</small>
-      {/if}
-      {#if account}
-        <button class="ghost" on:click={signOut}>Sign out</button>
-      {:else}
-        <button class="primary" disabled={authBusy} on:click={startLogin}>
-          {authBusy ? 'Opening...' : 'Sign in'}
-        </button>
-      {/if}
-    </section>
   </aside>
 
-  <section class="workspace">
-    <header class="topbar">
-      <div>
-        <span>Session Status</span>
-        <p>{status}</p>
-      </div>
-      <button class="launch-button" disabled={!canLaunch} on:click={() => launch()}>
-        {launchBusy ? 'Launching...' : 'Launch Veyra'}
-      </button>
+  <section class="launcher">
+    <header class="chrome">
+      <section class="identity">
+        <div class="logo-mark">VY</div>
+        <div>
+          <span class="eyebrow">Veyra launcher</span>
+          <h1>Play Minecraft</h1>
+        </div>
+      </section>
+
+      <section class="account-pill">
+        <div>
+          <span>{account ? 'Signed in' : 'Microsoft account'}</span>
+          <strong>{account?.profile.name ?? 'Offline'}</strong>
+        </div>
+        {#if account}
+          <button class="tiny" on:click={signOut}>Sign out</button>
+        {:else}
+          <button class="tiny primary-tiny" disabled={authBusy} on:click={startLogin}>
+            {authBusy ? 'Opening…' : 'Sign in'}
+          </button>
+        {/if}
+      </section>
     </header>
 
-    {#if activePanel === 'launch'}
-      <section class="play-grid">
-        <section class="launch-card">
-          <div class="card-head">
-            <div>
-              <span>Instance</span>
-              <h2>Veyra Fabric Runtime</h2>
-            </div>
-            <button class="secondary" on:click={async () => { await loadVersions(); await loadJavaRuntimes(); }}>Refresh</button>
-          </div>
+    {#if activeView === 'play'}
+      <section class="hero-card">
+        <div class="status-chip">
+          <span></span>
+          {status}
+        </div>
 
-          <div class="fields two">
-            <label>
-              <span>Minecraft Version</span>
-              <select bind:value={selectedVersion}>
-                {#each versions as version}
-                  <option value={version.id}>{version.id} ({version.version_type})</option>
-                {/each}
-              </select>
-            </label>
+        <button class="mega-launch" disabled={!canLaunch} on:click={launch}>
+          <strong>{launchBusy ? 'LAUNCHING…' : `LAUNCH ${selectedVersion || 'MINECRAFT'}`}</strong>
+          <small>{account ? 'Fabric + Veyra client profile' : 'Sign in to enable launch'}</small>
+        </button>
 
-            <label>
-              <span>Render Backend</span>
-              <select bind:value={renderProfile} on:change={() => setRenderProfile(renderProfile)}>
-                <option value="vulkan">VulkanMod — lean Vulkan profile</option>
-                <option value="opengl">OpenGL — Iris + performance mods</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="fields two">
-            <label>
-              <span>Java Runtime</span>
-              <select bind:value={javaPath}>
-                {#if javaRuntimes.length === 0}
-                  <option value="">Auto-detect on launch</option>
-                {:else}
-                  {#each javaRuntimes as runtime}
-                    <option value={runtime.path}>
-                      Java {runtime.version ?? '?'} · {runtime.vendor} {runtime.compatible ? '' : '(below Java 25)'}
-                    </option>
-                  {/each}
-                {/if}
-              </select>
-            </label>
-
-            <label>
-              <span>Java Path</span>
-              <input bind:value={javaPath} placeholder="Auto-detect newest compatible Java" />
-            </label>
-          </div>
-
-          <div class="fields three">
-            <label>
-              <span>Render Width</span>
-              <input type="number" min="640" max="7680" bind:value={windowWidth} />
-            </label>
-
-            <label>
-              <span>Render Height</span>
-              <input type="number" min="360" max="4320" bind:value={windowHeight} />
-            </label>
-
-            <label class="check-field">
-              <span>Fullscreen</span>
-              <input type="checkbox" bind:checked={fullscreen} />
-            </label>
-          </div>
-
-          <div class="module-strip">
-            <article>
-              <span>Overlay Suite</span>
-              <strong>Right Shift</strong>
-            </article>
-            <article>
-              <span>Renderer</span>
-              <strong>{renderProfile === 'vulkan' ? 'VulkanMod' : 'OpenGL + Iris'}</strong>
-            </article>
-            <article>
-              <span>Launch Stack</span>
-              <strong>Managed</strong>
-            </article>
-          </div>
-        </section>
-
-        <section class="side-panel">
-          <span>Active Profile</span>
-          <div class="profile-name">{account?.profile.name ?? 'Sign in required'}</div>
-          <div class="status-line">
-            <b>{installedMods.length}</b>
-            <span>managed mod{installedMods.length === 1 ? '' : 's'}</span>
-          </div>
-          <button class="secondary full" on:click={openModsFolder}>Open Mods</button>
-        </section>
-
-        <section class="log-panel">
-          <div class="card-head">
-            <div>
-              <span>Process Log</span>
-              <h2>Launch Output</h2>
-            </div>
-          </div>
-          <pre class="log">{launchLogs.length ? launchLogs.join('\n') : 'No launch output yet.'}</pre>
-        </section>
+        <div class="quick-meta">
+          <article>
+            <span>Profile</span>
+            <strong>{renderProfile === 'vulkan' ? 'VulkanMod' : 'OpenGL + Iris'}</strong>
+          </article>
+          <article>
+            <span>Mods</span>
+            <strong>{installedMods.length}</strong>
+          </article>
+          <article>
+            <span>Window</span>
+            <strong>{fullscreen ? 'Fullscreen' : `${windowWidth}×${windowHeight}`}</strong>
+          </article>
+        </div>
       </section>
-    {:else if activePanel === 'mods'}
-      <section class="library-grid">
-        <section class="launch-card">
-          <div class="card-head">
-            <div>
-              <span>Library</span>
-              <h2>{renderProfile === 'vulkan' ? 'VulkanMod' : 'OpenGL'} Profile Mods</h2>
-            </div>
-            <div class="row">
-              <select bind:value={renderProfile} on:change={() => setRenderProfile(renderProfile)}>
-                <option value="vulkan">VulkanMod mods</option>
-                <option value="opengl">OpenGL mods</option>
-              </select>
-              <button class="secondary" on:click={loadMods}>Refresh</button>
-              <button class="primary" on:click={openModsFolder}>Open Folder</button>
-            </div>
+    {/if}
+
+    {#if activeView === 'settings'}
+      <section class="panel settings-panel full-panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">Setup</span>
+            <h2>Runtime</h2>
           </div>
+          <button class="tiny" on:click={async () => { await loadVersions(); await loadJavaRuntimes(); }}>Refresh</button>
+        </div>
 
-          <code class="path">{modsPath}</code>
-          <p class="hint">
-            Launch copies this profile folder into Minecraft's active mods folder. Add your own
-            OpenGL-only mods here when the OpenGL profile is selected.
-          </p>
-
-          <div class="mods-list">
-            {#if installedMods.length === 0}
-              <p>No mod jars found.</p>
-            {:else}
-              {#each installedMods as mod}
-                <div class="mod-row">
-                  <strong>{mod.file_name}</strong>
-                  <span>{prettySize(mod.size_bytes)}</span>
-                </div>
+        <div class="fields two">
+          <label>
+            <span>Minecraft Version</span>
+            <select bind:value={selectedVersion}>
+              {#each versions as version}
+                <option value={version.id}>{version.id} ({version.version_type})</option>
               {/each}
-            {/if}
-          </div>
-        </section>
+            </select>
+          </label>
 
-        <section class="side-panel">
-          <span>Veyra Modules</span>
-          <div class="module-list">
-            <div><b>Search</b><span>\</span></div>
-            <div><b>Menu</b><span>Right Shift</span></div>
-            <div><b>ESP</b><span>Gizmos</span></div>
-          </div>
-        </section>
+          <label>
+            <span>Render Profile</span>
+            <select bind:value={renderProfile} on:change={() => setRenderProfile(renderProfile)}>
+              <option value="vulkan">VulkanMod — lean profile</option>
+              <option value="opengl">OpenGL — Iris + performance</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="fields two">
+          <label>
+            <span>Java Runtime</span>
+            <select bind:value={javaPath}>
+              {#if javaRuntimes.length === 0}
+                <option value="">Auto-detect on launch</option>
+              {:else}
+                {#each javaRuntimes as runtime}
+                  <option value={runtime.path}>
+                    Java {runtime.version ?? '?'} · {runtime.vendor} {runtime.compatible ? '' : '(below Java 25)'}
+                  </option>
+                {/each}
+              {/if}
+            </select>
+          </label>
+
+          <label>
+            <span>Java Path</span>
+            <input bind:value={javaPath} placeholder="Auto-detect newest compatible Java" />
+          </label>
+        </div>
+
+        <div class="fields three compact-fields">
+          <label>
+            <span>Width</span>
+            <input type="number" min="640" max="7680" bind:value={windowWidth} />
+          </label>
+
+          <label>
+            <span>Height</span>
+            <input type="number" min="360" max="4320" bind:value={windowHeight} />
+          </label>
+
+          <label class="check-field">
+            <span>Fullscreen</span>
+            <input type="checkbox" bind:checked={fullscreen} />
+          </label>
+        </div>
       </section>
-    {:else}
-      <section class="servers-grid">
-        <section class="launch-card server-board">
-          <div class="card-head">
-            <div>
-              <span>Quick Servers</span>
-              <h2>Popular Java Servers</h2>
-            </div>
-            <button class="secondary" on:click={() => (activePanel = 'launch')}>Runtime</button>
-          </div>
+    {/if}
 
-          <div class="server-list">
-            {#each popularServers as server}
-              <article class="server-card">
-                <div>
-                  <span>{server.mode}</span>
-                  <strong>{server.name}</strong>
-                  <p>{server.note}</p>
-                </div>
-                <code>{server.ip}</code>
-                <div class="server-actions">
-                  <button class="secondary" on:click={() => copyServerIp(server)}>Copy IP</button>
-                  <button class="primary" disabled={!canLaunch} on:click={() => launch(server)}>
-                    Join
-                  </button>
-                </div>
-              </article>
+    {#if activeView === 'mods'}
+      <section class="panel mods-panel full-panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">Library</span>
+            <h2>Profile Mods</h2>
+          </div>
+          <button class="tiny" on:click={openModsFolder}>Open</button>
+        </div>
+
+        <code class="path">{modsPath}</code>
+
+        <div class="mods-list">
+          {#if installedMods.length === 0}
+            <p>No mod jars found.</p>
+          {:else}
+            {#each installedMods.slice(0, 5) as mod}
+              <div class="mod-row">
+                <strong>{mod.file_name}</strong>
+                <span>{prettySize(mod.size_bytes)}</span>
+              </div>
             {/each}
-          </div>
-        </section>
-
-        <section class="side-panel">
-          <span>How it works</span>
-          <div class="module-list">
-            <div><b>Copy</b><span>IP</span></div>
-            <div><b>Join</b><span>Quick Play</span></div>
-            <div><b>Mods</b><span>Fabric</span></div>
-          </div>
-          <p class="hint">Join launches Minecraft with the selected server address. Server IPs can change, so use Copy IP if Quick Play fails.</p>
-        </section>
+          {/if}
+        </div>
       </section>
+    {/if}
+
+    {#if activeView === 'logs'}
+      <section class="panel log-panel full-panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Console</span>
+          <h2>Launch Output</h2>
+        </div>
+      </div>
+      <pre class="log">{launchLogs.length ? launchLogs.join('\n') : 'No launch output yet.'}</pre>
+      </section>
+    {/if}
+
+    {#if authPath}
+      <small class="auth-path">Auth: {authPath}</small>
     {/if}
   </section>
 </main>

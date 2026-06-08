@@ -2,7 +2,7 @@
 
 The current Veyra mod code is client-side.
 
-It reads client-known data and draws local overlays. It does not currently implement custom packet sending, reach changes, movement changes, combat automation, inventory automation, or rotation spoofing.
+It reads client-known data and draws local overlays. It does not currently implement custom packet sending, reach changes, player movement changes, combat automation, inventory automation, or rotation spoofing.
 
 ## Current client-side behavior
 
@@ -16,6 +16,7 @@ Current features include:
 - durability/effect/FPS/ping/RAM/coordinate HUD
 - local waypoints and death marker
 - optional local fullbright lightmap adjustment
+- local freecam camera movement that cancels player movement input while active
 
 From the code currently present, normal gameplay packets should remain vanilla unless future features change that. It should be able to connect to vanilla servers because the server does not need to install Veyra.
 

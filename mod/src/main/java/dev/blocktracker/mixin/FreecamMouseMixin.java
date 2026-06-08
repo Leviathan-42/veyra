@@ -20,6 +20,16 @@ public abstract class FreecamMouseMixin {
     @Shadow
     private double accumulatedDY;
 
+    @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
+    private void veyra$adjustFreecamSpeed(long window, double horizontal, double vertical, CallbackInfo ci) {
+        if (!VeyraFreecam.enabled()) {
+            return;
+        }
+
+        VeyraFreecam.adjustSpeed(vertical);
+        ci.cancel();
+    }
+
     @Inject(method = "turnPlayer", at = @At("HEAD"), cancellable = true)
     private void veyra$turnFreecamOnly(double delta, CallbackInfo ci) {
         if (!VeyraFreecam.enabled()) {

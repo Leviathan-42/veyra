@@ -1,25 +1,20 @@
 package dev.blocktracker.mixin;
 
-import com.mojang.blaze3d.platform.InputConstants;
-import dev.blocktracker.BlockSearchScreen;
-import dev.blocktracker.BlockTrackerConfigScreen;
 import dev.blocktracker.BlockTrackerRenderer;
 import dev.blocktracker.BlockTrackerState;
 import dev.blocktracker.VeyraFreecam;
+import dev.blocktracker.VeyraKeybinds;
+import dev.blocktracker.VeyraOnboarding;
+import dev.blocktracker.VeyraTutorialScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.TitleScreen;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public abstract class MinecraftClientMixin {
-    @Unique
-    private boolean blockTracker$backslashWasDown;
-    @Unique
-    private boolean blockTracker$rightShiftWasDown;
-
     @Inject(method = "tick", at = @At("HEAD"))
     private void veyra$tickFreecam(CallbackInfo ci) {
         Minecraft client = (Minecraft) (Object) this;
@@ -27,45 +22,27 @@ public abstract class MinecraftClientMixin {
             return;
         }
 
-        VeyraFreecam.tick(client, InputConstants.isKeyDown(client.getWindow(), InputConstants.KEY_C));
+        VeyraFreecam.tick(client, VeyraKeybinds.TOGGLE_FREECAM.isDown());
     }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void blockTracker$openSearchScreen(CallbackInfo ci) {
         Minecraft client = (Minecraft) (Object) this;
 
-        if (client.player == null || client.getWindow() == null) {
+        if (client.getWindow() == null) {
             return;
         }
 
-        boolean backslashDown = InputConstants.isKeyDown(
-                client.getWindow(),
-                InputConstants.KEY_BACKSLASH
-        );
-
-        if (backslashDown && !blockTracker$backslashWasDown) {
-            if (client.screen instanceof BlockSearchScreen) {
-                client.setScreen(null);
-            } else {
-                client.setScreen(new BlockSearchScreen());
-            }
+        if (client.screen instanceof TitleScreen && VeyraOnboarding.consumeShouldShow()) {
+            client.setScreen(new VeyraTutorialScreen(client.screen));
+            return;
         }
 
-        boolean rightShiftDown = InputConstants.isKeyDown(
-                client.getWindow(),
-                InputConstants.KEY_RSHIFT
-        );
-
-        if (rightShiftDown && !blockTracker$rightShiftWasDown) {
-            if (client.screen instanceof BlockTrackerConfigScreen) {
-                client.setScreen(null);
-            } else if (client.screen == null) {
-                client.setScreen(new BlockTrackerConfigScreen());
-            }
+        if (client.player == null) {
+            return;
         }
 
-        blockTracker$backslashWasDown = backslashDown;
-        blockTracker$rightShiftWasDown = rightShiftDown;
+        VeyraKeybinds.tick(client);
         BlockTrackerState.updatePlayerTracking(client);
         BlockTrackerRenderer.emit(client);
     }

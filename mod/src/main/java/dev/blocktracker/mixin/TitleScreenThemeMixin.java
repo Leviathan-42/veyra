@@ -2,6 +2,7 @@ package dev.blocktracker.mixin;
 
 import dev.blocktracker.BlockSearchScreen;
 import dev.blocktracker.BlockTrackerConfigScreen;
+import dev.blocktracker.VeyraKeybinds;
 import dev.blocktracker.VeyraUi;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -35,7 +36,7 @@ public abstract class TitleScreenThemeMixin extends Screen {
         int buttonHeight = 22;
         int gap = 7;
         int bottomPadding = 52;
-        int totalButtonsHeight = (4 * buttonHeight) + (3 * gap) + 8 + 22;
+        int totalButtonsHeight = (5 * buttonHeight) + (4 * gap) + 8 + 22;
         int y = panelY + panelHeight - bottomPadding - totalButtonsHeight;
         y = Math.max(panelY + 76, y);
 
@@ -55,12 +56,18 @@ public abstract class TitleScreenThemeMixin extends Screen {
                 this.minecraft.setScreen(new BlockTrackerConfigScreen()))
                 .bounds(left, y + 87, buttonWidth, buttonHeight)
                 .build());
+        addRenderableWidget(Button.builder(VeyraUi.component("Theme: " + VeyraUi.themeName()), button -> {
+                    VeyraUi.cycleTheme();
+                    this.rebuildWidgets();
+                })
+                .bounds(left, y + 116, buttonWidth, buttonHeight)
+                .build());
         addRenderableWidget(Button.builder(VeyraUi.component("Options"), button ->
                 this.minecraft.setScreen(new OptionsScreen(this, this.minecraft.options, false)))
-                .bounds(left, y + 120, (buttonWidth - 8) / 2, 22)
+                .bounds(left, y + 149, (buttonWidth - 8) / 2, 22)
                 .build());
         addRenderableWidget(Button.builder(VeyraUi.component("Quit"), button -> this.minecraft.stop())
-                .bounds(left + ((buttonWidth - 8) / 2) + 8, y + 120, (buttonWidth - 8) / 2, 22)
+                .bounds(left + ((buttonWidth - 8) / 2) + 8, y + 149, (buttonWidth - 8) / 2, 22)
                 .build());
 
         ci.cancel();
@@ -83,15 +90,15 @@ public abstract class TitleScreenThemeMixin extends Screen {
 
         VeyraUi.panel(graphics, x, y, panelWidth, panelHeight);
 
-        VeyraUi.text(graphics, this.font, "Veyra", x + 24, y + 18, 0xFFF4F7FA);
-        VeyraUi.text(graphics, this.font, "Fabric utility client", x + 24, y + 35, 0xFF8B96A5);
-        VeyraUi.text(graphics, this.font, "Vulkan renderer  /  local overlays  /  clean UI", x + 24, y + 51, 0xFF6B7280);
+        VeyraUi.text(graphics, this.font, "Veyra", x + 24, y + 18, VeyraUi.TEXT);
+        VeyraUi.text(graphics, this.font, "Fabric utility client", x + 24, y + 35, VeyraUi.MUTED);
+        VeyraUi.text(graphics, this.font, "Theme: " + VeyraUi.themeName() + "  /  local overlays  /  clean UI", x + 24, y + 51, VeyraUi.SUBTLE);
 
         int statusX = x + 24;
         int statusY = y + panelHeight - 34;
         graphics.fill(statusX, statusY, x + panelWidth - 24, statusY + 18, VeyraUi.SURFACE);
         graphics.outline(statusX, statusY, panelWidth - 48, 18, VeyraUi.EDGE);
-        VeyraUi.text(graphics, this.font, "Right Shift opens in-game controls", statusX + 8, statusY + 5, 0xFF8B96A5);
+        VeyraUi.text(graphics, this.font, VeyraKeybinds.menuKeyName() + " opens in-game controls", statusX + 8, statusY + 5, VeyraUi.MUTED);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         ci.cancel();
