@@ -124,6 +124,7 @@ async fn install_and_launch(
     window_height: Option<u32>,
     fullscreen: Option<bool>,
     render_profile: Option<String>,
+    memory_mb: Option<u32>,
 ) -> Result<LaunchResult, String> {
     minecraft::install_and_launch(
         app,
@@ -134,6 +135,7 @@ async fn install_and_launch(
         window_height,
         fullscreen,
         render_profile,
+        memory_mb,
     )
     .await
     .map_err(error::stringify)

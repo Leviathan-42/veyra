@@ -139,18 +139,110 @@ public final class VeyraUi {
     }
 
     public static void screenBackground(GuiGraphicsExtractor graphics, int width, int height, boolean inGame) {
-        graphics.fill(0, 0, width, height, inGame ? IN_GAME_BACKGROUND : BACKGROUND);
+        int background = inGame ? IN_GAME_BACKGROUND : BACKGROUND;
+        graphics.fill(0, 0, width, height, background);
+
+        int grid = withAlpha(EDGE, inGame ? 0x18 : 0x24);
+        for (int x = 24; x < width; x += 48) {
+            graphics.fill(x, 0, x + 1, height, grid);
+        }
+        for (int y = 24; y < height; y += 48) {
+            graphics.fill(0, y, width, y + 1, grid);
+        }
+
+        graphics.fill(0, 0, width, 2, withAlpha(ACCENT, 0x55));
+        graphics.fill(0, height - 2, width, height, withAlpha(TEAL, 0x22));
     }
 
     public static void titleBackground(GuiGraphicsExtractor graphics, int width, int height) {
         graphics.fill(0, 0, width, height, theme.titleBackground);
+        screenBackground(graphics, width, height, false);
         graphics.fill(0, 0, width, height, theme.titleOverlay);
-        graphics.fill(width / 2 - 150, 78, width / 2 + 150, 79, theme.titleAccentLine);
+        graphics.fill(width / 2 - 230, 62, width / 2 + 230, 63, withAlpha(ACCENT, 0x44));
+        graphics.fill(width / 2 - 90, 62, width / 2 + 90, 64, theme.titleAccentLine);
     }
 
     public static void panel(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
+        graphics.fill(x + 5, y + 6, x + width + 5, y + height + 6, 0x66000000);
         graphics.fill(x, y, x + width, y + height, PANEL);
         graphics.outline(x, y, width, height, EDGE);
+        graphics.fill(x + 1, y + 1, x + width - 1, y + 3, withAlpha(ACCENT, 0x88));
+        cornerBrackets(graphics, x, y, width, height, withAlpha(ACCENT, 0xAA));
+    }
+
+    public static void shell(
+            GuiGraphicsExtractor graphics,
+            Font font,
+            int x,
+            int y,
+            int width,
+            int height,
+            String title,
+            String subtitle,
+            String badge
+    ) {
+        panel(graphics, x, y, width, height);
+        graphics.fill(x + 1, y + 3, x + width - 1, y + 50, withAlpha(SURFACE, 0xB8));
+        graphics.fill(x + 18, y + 50, x + width - 18, y + 51, withAlpha(EDGE, 0x88));
+        mark(graphics, x + 18, y + 14, 22);
+        text(graphics, font, title, x + 51, y + 13, TEXT);
+        text(graphics, font, subtitle, x + 51, y + 29, MUTED);
+
+        if (badge != null && !badge.isBlank()) {
+            int badgeWidth = width(font, badge) + 16;
+            int badgeX = x + width - badgeWidth - 18;
+            graphics.fill(badgeX, y + 17, badgeX + badgeWidth, y + 35, withAlpha(ACCENT, 0x22));
+            graphics.outline(badgeX, y + 17, badgeWidth, 18, withAlpha(ACCENT, 0x88));
+            centeredText(graphics, font, badge, badgeX + badgeWidth / 2, y + 22, ACCENT);
+        }
+    }
+
+    public static void card(GuiGraphicsExtractor graphics, int x, int y, int width, int height, boolean highlighted) {
+        graphics.fill(x + 2, y + 3, x + width + 2, y + height + 3, 0x33000000);
+        graphics.fill(x, y, x + width, y + height, highlighted ? SURFACE_HOVER : SURFACE);
+        graphics.outline(x, y, width, height, highlighted ? withAlpha(ACCENT, 0xAA) : EDGE);
+        if (highlighted) {
+            graphics.fill(x, y + 5, x + 2, y + height - 5, ACCENT);
+        }
+    }
+
+    public static void sectionLabel(GuiGraphicsExtractor graphics, Font font, String label, int x, int y, int width) {
+        String text = label.toUpperCase(Locale.ROOT);
+        text(graphics, font, text, x, y, ACCENT);
+        int start = x + width(font, text) + 9;
+        if (start < x + width) {
+            graphics.fill(start, y + 4, x + width, y + 5, withAlpha(EDGE, 0x88));
+        }
+    }
+
+    public static void mark(GuiGraphicsExtractor graphics, int x, int y, int size) {
+        int mid = size / 2;
+        int color = withAlpha(ACCENT, 0xDD);
+        int inner = withAlpha(PANEL, 0xF8);
+        for (int row = 0; row < mid; row++) {
+            int inset = mid - row - 1;
+            graphics.fill(x + inset, y + row, x + size - inset, y + row + 1, color);
+            graphics.fill(x + inset, y + size - row - 1, x + size - inset, y + size - row, color);
+        }
+        for (int row = 4; row < size - 4; row++) {
+            int inset = Math.abs(mid - row) + 4;
+            if (x + inset < x + size - inset) {
+                graphics.fill(x + inset, y + row, x + size - inset, y + row + 1, inner);
+            }
+        }
+        text(graphics, net.minecraft.client.Minecraft.getInstance().font, "V", x + mid - 3, y + mid - 4, TEXT);
+    }
+
+    public static void cornerBrackets(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
+        int length = 10;
+        graphics.fill(x, y, x + length, y + 1, color);
+        graphics.fill(x, y, x + 1, y + length, color);
+        graphics.fill(x + width - length, y, x + width, y + 1, color);
+        graphics.fill(x + width - 1, y, x + width, y + length, color);
+        graphics.fill(x, y + height - 1, x + length, y + height, color);
+        graphics.fill(x, y + height - length, x + 1, y + height, color);
+        graphics.fill(x + width - length, y + height - 1, x + width, y + height, color);
+        graphics.fill(x + width - 1, y + height - length, x + width, y + height, color);
     }
 
     public static int withAlpha(int color, int alpha) {
@@ -174,8 +266,13 @@ public final class VeyraUi {
             edge = highlighted ? theme.hoverEdge : EDGE;
         }
 
+        graphics.fill(x + 2, y + 2, x + width + 2, y + height + 2, 0x33000000);
         graphics.fill(x, y, x + width, y + height, fill);
         graphics.outline(x, y, width, height, edge);
+        if (active && highlighted) {
+            graphics.fill(x + 1, y + 1, x + 3, y + height - 1, ACCENT);
+            graphics.fill(x + 3, y + height - 2, x + width - 2, y + height - 1, withAlpha(ACCENT, 0x88));
+        }
     }
 
     public static Component component(String text) {

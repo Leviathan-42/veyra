@@ -1,58 +1,43 @@
-# Roadmap Ideas
+# Roadmap
 
-Safer client-side/QoL ideas for Veyra, intended for singleplayer, private servers, debugging, building, or servers that explicitly allow them.
+The major launcher UI, custom Minecraft UI/boot sequence, incremental scanner, queued targets, modular telemetry HUD and presets, profile management, RAM control, auto resolution, and FreeCam camera integration are implemented. The remaining roadmap focuses on maintainability and product finish.
 
-## Overlay / HUD
+## Build and release
 
-- armor durability HUD
-- tool durability HUD
-- potion/effect timers
-- FPS/ping/system stats
-- coordinate/biome/direction HUD
-- clean HUD screenshot mode
+- add and pin a Gradle wrapper;
+- migrate the mod build to Fabric Loom instead of compiling against launcher-installed jars;
+- add CI for Vite, Cargo, Gradle, `git diff --check`, and artifact hashes;
+- create signed/versioned launcher bundles;
+- add release notes and an explicit mod/launcher compatibility table.
 
-## Navigation
+## Testing
 
-- waypoint system
-- death marker
-- manual breadcrumb markers
-- compass overlay pointing to saved waypoints
+- unit-test JVM argument replacement and memory clamping;
+- test profile mirroring with conflicting/manual jars;
+- test block scan cancellation, replacement, chunk unloads, and retry behavior;
+- add persistence round-trip tests for `veyra-client.properties`;
+- exercise FreeCam across vanilla, Sodium/Iris, and Vulkan profiles;
+- add screenshot-based smoke checks for the launcher and custom Minecraft screens.
 
-## Building utilities
+## UX polish
 
-- block palette/search helper
-- recently used blocks list
-- block ID copy UI
-- chunk border overlay
-- light level overlay
-- grid/measurement overlay
+- replace the temporary V mark with final SVG/PNG branding and platform icons;
+- persist renderer, version, Java, fullscreen, and display selections;
+- show validation for unreasonable custom resolutions before launch;
+- add import/export/reset actions for Veyra client settings;
+- improve keyboard/controller navigation and screen-reader labels.
 
-## Accessibility
+## Architecture
 
-- clearer subtitles
-- directional hit indicators
-- colorblind-friendly ESP colors
-- larger HUD text mode
-- high-contrast UI mode
+- split the large launcher component into focused Svelte components/stores;
+- extract managed-mod profile definitions from `minecraft.rs` into data/config;
+- centralize shared version constants so docs, Fabric metadata, Gradle, and UI cannot drift;
+- add structured logging categories instead of relying only on text messages;
+- plan a migration before renaming stable `blocktracker` identifiers.
 
-## Launcher improvements
+## Compatibility
 
-- add Gradle wrapper for mod builds
-- add Fabric Loom for standard mod dependency management
-- auto-build mod from launcher in dev mode
-- better Java detection per OS
-- clearer missing-Java errors
-- launcher settings page
-- profile/instance management
-
-## Branding cleanup
-
-Eventually rename old internal `blocktracker` names if desired:
-
-- Rust crate/package
-- Java package
-- Maven group
-- mod jar base name
-- keyring service
-
-This can be done later because changing IDs may affect existing saves/configs/mod folders.
+- document the supported renderer-mod matrix per release;
+- degrade gracefully when an optional renderer/culling integration changes internals;
+- keep FreeCam client-only and clearly expose the server-chunk visibility limit;
+- review new Minecraft releases before changing the launcher's default version.

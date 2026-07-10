@@ -1,115 +1,54 @@
 # Launcher
 
-Path: `launcher/`
+The launcher in `launcher/` is a Tauri 2 desktop application with a Svelte 5/Vite frontend and a Rust backend.
 
-The launcher is a desktop app built with:
+## User interface
 
-- Tauri 2
-- Rust backend
-- Svelte 5 frontend
-- Vite
+`launcher/src/App.svelte` provides four views:
 
-## Frontend
+- **Play** - account/session summary, selected Minecraft build, and launch action
+- **Mod library** - installed jars for the selected renderer profile and a folder shortcut
+- **Settings** - Minecraft version, renderer, Java, RAM, display, fullscreen, and theme controls
+- **Launch log** - bounded live output from installation and the Minecraft process
 
-Main file: `launcher/src/App.svelte`
+The launcher defaults to dark mode and supports a persistent light theme. Its animated startup sequence is skipped when the operating system requests reduced motion.
 
-The UI handles:
+## Settings
 
-- Microsoft sign-in button/state
-- Minecraft version selection
-- Java runtime auto-detection + manual Java path input
-- OpenGL/VulkanMod render profile selection
-- launch button
-- per-profile mods folder/library panel
-- popular server panel with copy-IP and quick-play launch buttons
-- process logs streamed from the Rust backend
+### Minecraft and Java
 
-Important invoke commands used by the frontend:
+The version picker is populated from Mojang's version manifest and defaults to the newest stable release. Java runtimes are discovered locally and marked compatible when they meet the current Java 25 requirement; a manual executable path is also accepted.
 
-- `auth_open_login_window`
-- `auth_complete_login`
-- `auth_load_saved`
-- `auth_sign_out`
-- `list_versions`
-- `detect_java_runtimes`
-- `install_and_launch` — accepts optional `quickPlayServer` and render profile for direct server launch
-- `mods_dir`
-- `profile_mods_dir`
-- `list_installed_mods`
-- `list_profile_installed_mods`
-- `open_mods_folder`
-- `open_profile_mods_folder`
+### Memory
 
-## Rust backend
+Memory allocation is selectable from 2 through 16 GB, with 4/6/8/12 GB presets. The selected value is saved as `veyra-memory-gb` in launcher webview local storage and passed to Rust as MB.
 
-Main files:
-
-- `launcher/src-tauri/src/lib.rs` — Tauri command registration/window auth flow
-- `launcher/src-tauri/src/auth.rs` — Microsoft/Xbox/Minecraft auth
-- `launcher/src-tauri/src/minecraft.rs` — version install, Fabric install, launch args
-- `launcher/src-tauri/src/paths.rs` — cross-platform data directory resolution
-- `launcher/src-tauri/src/types.rs` — shared serialized types
-
-## Auth flow
-
-The launcher opens a Microsoft login webview. On redirect to:
+The backend removes existing heap flags and adds:
 
 ```text
-https://login.live.com/oauth20_desktop.srf
+-Xms512M
+-Xmx<selected MB>M
 ```
 
-it extracts the authorization code, exchanges it for Microsoft tokens, then performs Xbox Live/XSTS/Minecraft login.
+### Display
 
-Refresh tokens are stored through the OS keyring when possible, with account metadata stored in the launcher data dir.
+Auto mode reads the primary monitor size using Tauri's window API. Custom mode accepts explicit width and height. Fullscreen is independent of the resolution mode.
 
-## Minecraft launch flow
+### Render profiles
 
-`install_and_launch` does roughly:
-
-1. Load/refresh account.
-2. Create the launcher game directory.
-3. Sync local development Veyra mod jar if built.
-4. Detect/use the newest compatible Java runtime when no manual Java path is provided.
-5. Download compatible profile mods from Modrinth when available:
-   - Vulkan profile: lean VulkanMod stack.
-   - OpenGL profile: Iris/Sodium/performance stack.
-6. Mirror the selected profile's mods folder into the active Minecraft `mods/` folder.
-7. Download selected Minecraft version metadata/client jar.
-8. Download libraries/assets/natives.
-9. Install Fabric loader/runtime libraries.
-10. Build JVM and game args.
-11. Optionally append a `--quickPlayMultiplayer` target when launched from a server card.
-12. Spawn Java and stream stdout/stderr back to the UI.
-
-## Development mod sync
-
-If this exists:
+Profiles isolate renderer-specific mods under:
 
 ```text
-mod/build/libs/block-tracker-0.1.0.jar
+<game dir>/profiles/<profile>/mods
 ```
 
-it is copied into the launcher's managed `mods/` folder before launch. Old `block-tracker-*.jar` files are removed first.
+The selected folder is mirrored into the active `minecraft/mods` directory at launch.
 
-## Render profiles and managed client mods
-
-Veyra has separate profile mod folders under:
-
-```text
-<VeyraLauncher>/minecraft/profiles/<profile>/mods
-```
-
-On launch, the selected profile folder is mirrored into Minecraft's active `mods/` folder.
-
-### VulkanMod profile
-
-Lean profile intended for VulkanMod compatibility:
+**Vulkan profile**
 
 - VulkanMod
 
-### OpenGL profile
-
-OpenGL/Iris profile intended for standard shader and performance mod use:
+**OpenGL + Iris profile**
 
 - Fabric API
 - Sodium
@@ -126,6 +65,66 @@ OpenGL/Iris profile intended for standard shader and performance mod use:
 - Enhanced Block Entities
 - Dynamic FPS
 
-The launcher can open the selected profile's mods folder so users can add their own profile-specific mods.
+Unavailable Modrinth builds are logged and skipped rather than aborting the entire launch.
 
-If Modrinth has no compatible build for a selected version, the launcher logs a skip and continues launching.
+## Tauri command surface
+
+Commands are registered in `launcher/src-tauri/src/lib.rs`:
+
+| Command | Responsibility |
+| --- | --- |
+| `auth_start_login` | Create an OAuth start payload |
+| `auth_open_login_window` | Open/focus the Microsoft authentication webview |
+| `auth_complete_login` | Exchange the returned code through Xbox/XSTS/Minecraft auth |
+| `auth_load_saved` | Restore and refresh a saved account |
+| `auth_sign_out` | Clear saved account/token state |
+| `list_versions` | Return Mojang version choices |
+| `detect_java_runtimes` | Discover and classify Java installations |
+| `install_and_launch` | Prepare the instance and start Minecraft |
+| `mods_dir` / `profile_mods_dir` | Return managed mod paths |
+| `list_installed_mods` / `list_profile_installed_mods` | List jar metadata |
+| `open_mods_folder` / `open_profile_mods_folder` | Open folders with the native file manager |
+
+`install_and_launch` accepts Java path, Minecraft version, optional quick-play server, window dimensions, fullscreen, render profile, and optional memory MB.
+
+## Authentication
+
+The launcher opens Microsoft login in a dedicated webview. Navigation to Microsoft's desktop OAuth redirect is intercepted, and the authorization code is returned to the main window through an `auth-code` event. Rust then completes Microsoft, Xbox Live, XSTS, and Minecraft authentication.
+
+Account metadata is stored in `account.json`. Refresh tokens use the operating-system keyring where supported.
+
+## Installation and launch pipeline
+
+The backend in `minecraft.rs`:
+
+1. loads or refreshes the account;
+2. creates the managed game directory;
+3. syncs the latest local Veyra development jar if present;
+4. resolves the render profile and compatible managed mods;
+5. downloads version metadata, client jar, libraries, assets, and natives as needed;
+6. installs Fabric Loader libraries;
+7. expands Mojang JVM/game argument rules;
+8. applies memory, resolution, fullscreen, and optional quick-play arguments;
+9. starts Java in the managed directory; and
+10. streams stdout/stderr to the UI.
+
+Minecraft asset objects are deduplicated by content hash and downloaded or cache-verified with a shared HTTP connection pool at a bounded concurrency of 32. Individual downloads retain SHA-1/size validation, resumable `.part` files, and retry/backoff behavior. Progress updates are aggregated so thousands of tiny assets do not overwhelm the frontend event loop.
+
+## Frontend state ownership
+
+Persistent browser-side settings currently include:
+
+- `veyra-theme`
+- `veyra-memory-gb`
+
+Version, Java, display, fullscreen, and render-profile selections currently live for the launcher session unless otherwise stored by the underlying Minecraft options/profile data.
+
+## Important source files
+
+- `launcher/src/App.svelte` - state, command calls, and markup
+- `launcher/src/styles.css` - visual system, themes, responsive layout, and startup animation
+- `launcher/src-tauri/src/lib.rs` - command registration and auth window
+- `launcher/src-tauri/src/auth.rs` - account/token flow
+- `launcher/src-tauri/src/minecraft.rs` - install/profile/launch pipeline
+- `launcher/src-tauri/src/paths.rs` - cross-platform storage paths
+- `launcher/src-tauri/src/types.rs` - serialized command/event types

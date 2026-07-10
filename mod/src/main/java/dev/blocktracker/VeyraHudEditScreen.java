@@ -29,26 +29,29 @@ public final class VeyraHudEditScreen extends Screen {
 
     private void rebuildButtons() {
         buttons.clear();
-        int x = 14;
-        int y = 52;
-        buttons.add(new Button(x, y, 126, 22, () -> "Mode: " + (BlockTrackerState.hudCompactMode() ? "Compact" : "Expanded"), BlockTrackerState::toggleHudCompactMode));
+        int x = 20;
+        int y = 78;
+        buttons.add(new Button(x, y, 142, 22, () -> "Mode: " + (BlockTrackerState.hudCompactMode() ? "Compact" : "Expanded"), BlockTrackerState::toggleHudCompactMode));
+        buttons.add(new Button(x + 152, y, 142, 22, () -> "Preset: " + BlockTrackerState.hudPresetName(), BlockTrackerState::cycleHudPreset));
         y += 30;
-        buttons.add(new Button(x, y, 60, 22, () -> "- Scale", BlockTrackerState::decreaseHudScale));
-        buttons.add(new Button(x + 66, y, 60, 22, () -> "+ Scale", BlockTrackerState::increaseHudScale));
-        y += 34;
+        buttons.add(new Button(x, y, 68, 22, () -> "- Scale", BlockTrackerState::decreaseHudScale));
+        buttons.add(new Button(x + 74, y, 68, 22, () -> "+ Scale", BlockTrackerState::increaseHudScale));
+        y += 54;
 
+        int index = 0;
         for (BlockTrackerState.HudModule module : BlockTrackerState.HudModule.values()) {
-            int rowY = y;
-            buttons.add(new Button(x, rowY, 62, 20, () -> (BlockTrackerState.hudModuleEnabled(module) ? "On " : "Off ") + module.title(), () -> BlockTrackerState.toggleHudModule(module)));
-            buttons.add(new Button(x + 68, rowY, 58, 20, () -> BlockTrackerState.hudModuleDetached(module) ? "Window" : "Group", () -> BlockTrackerState.toggleHudModuleDetached(module)));
-            y += 24;
+            int columnX = x + ((index % 2) * 152);
+            int rowY = y + ((index / 2) * 24);
+            buttons.add(new Button(columnX, rowY, 92, 20, () -> (BlockTrackerState.hudModuleEnabled(module) ? "On " : "Off ") + module.title(), () -> BlockTrackerState.toggleHudModule(module)));
+            buttons.add(new Button(columnX + 98, rowY, 48, 20, () -> BlockTrackerState.hudModuleDetached(module) ? "Window" : "Group", () -> BlockTrackerState.toggleHudModuleDetached(module)));
+            index++;
         }
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (VeyraKeybinds.openMenuMatches(event) || event.key() == InputConstants.KEY_ESCAPE) {
-            Minecraft.getInstance().setScreen(null);
+            Minecraft.getInstance().gui.setScreen(null);
             return true;
         }
         return super.keyPressed(event);
@@ -117,12 +120,10 @@ public final class VeyraHudEditScreen extends Screen {
 
         int panelX = 8;
         int panelY = 8;
-        int panelW = 144;
+        int panelW = 320;
         int panelH = this.height - 16;
-        graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, VeyraUi.PANEL);
-        graphics.outline(panelX, panelY, panelW, panelH, VeyraUi.ACCENT);
-        VeyraUi.text(graphics, this.font, "HUD edit mode", panelX + 10, panelY + 10, VeyraUi.TEXT);
-        VeyraUi.text(graphics, this.font, "Drag boxes to move", panelX + 10, panelY + 25, VeyraUi.MUTED);
+        VeyraUi.shell(graphics, this.font, panelX, panelY, panelW, panelH, "HUD Edit", "Drag outlined modules", "");
+        VeyraUi.sectionLabel(graphics, this.font, "Layout", panelX + 12, panelY + 61, panelW - 24);
 
         drawScaleSlider(graphics, mouseX, mouseY);
         for (Button button : buttons) {
@@ -130,7 +131,7 @@ public final class VeyraHudEditScreen extends Screen {
         }
 
         String hint = "Esc to save";
-        VeyraUi.text(graphics, this.font, hint, panelX + 10, this.height - 24, VeyraUi.MUTED);
+        VeyraUi.text(graphics, this.font, hint, panelX + 12, this.height - 24, VeyraUi.MUTED);
     }
 
     @Override
@@ -139,9 +140,9 @@ public final class VeyraHudEditScreen extends Screen {
     }
 
     private void drawScaleSlider(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-        int x = 20;
-        int y = 105;
-        int w = 116;
+        int x = 24;
+        int y = 145;
+        int w = 126;
         graphics.fill(x, y, x + w, y + 4, VeyraUi.EDGE);
         int knob = x + Math.round((BlockTrackerState.hudScalePercent() - 60) / 100.0F * w);
         graphics.fill(knob - 3, y - 4, knob + 4, y + 9, scaleSliderContains(mouseX, mouseY) ? VeyraUi.ACCENT : VeyraUi.TEXT);
@@ -149,11 +150,11 @@ public final class VeyraHudEditScreen extends Screen {
     }
 
     private boolean scaleSliderContains(double mouseX, double mouseY) {
-        return mouseX >= 20 && mouseX <= 136 && mouseY >= 96 && mouseY <= 116;
+        return mouseX >= 24 && mouseX <= 150 && mouseY >= 136 && mouseY <= 156;
     }
 
     private void updateScaleFromMouse(double mouseX) {
-        int value = 60 + Math.round((clamp((int) mouseX, 20, 136) - 20) / 116.0F * 100);
+        int value = 60 + Math.round((clamp((int) mouseX, 24, 150) - 24) / 126.0F * 100);
         BlockTrackerState.setHudScalePercent(value);
     }
 

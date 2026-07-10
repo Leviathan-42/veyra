@@ -3,6 +3,9 @@ package dev.blocktracker;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.Marker;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec3;
 
@@ -17,6 +20,8 @@ public final class VeyraFreecam {
     private static boolean cWasDown;
     private static Vec3 position;
     private static CameraType previousCameraType;
+    private static Entity previousCameraEntity;
+    private static Marker cameraEntity;
     private static float yaw;
     private static float pitch;
     private static boolean forward;
@@ -87,7 +92,7 @@ public final class VeyraFreecam {
             return;
         }
 
-        if (cDown && !cWasDown && client.screen == null) {
+        if (cDown && !cWasDown && client.gui.screen() == null) {
             if (enabled) {
                 disable(client);
             } else {
@@ -152,6 +157,8 @@ public final class VeyraFreecam {
         if (length > 0.0D) {
             position = position.add((dx / length) * speed, (dy / length) * speed, (dz / length) * speed);
         }
+
+        syncCameraEntity();
     }
 
     private static void enable(Minecraft client) {
@@ -160,16 +167,31 @@ public final class VeyraFreecam {
         yaw = client.player.getYRot();
         pitch = client.player.getXRot();
         previousCameraType = client.options.getCameraType();
-        client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+        previousCameraEntity = client.getCameraEntity();
+
+        if (client.level != null) {
+            cameraEntity = new Marker(EntityTypes.MARKER, client.level);
+            syncCameraEntity();
+            client.setCameraEntity(cameraEntity);
+        }
+
+        // Keep vanilla and renderer mods anchored to the detached camera rather
+        // than the player's old view when rebuilding chunk/frustum visibility.
+        client.options.setCameraType(CameraType.FIRST_PERSON);
     }
 
     private static void disable(Minecraft client) {
         if (enabled && previousCameraType != null) {
             client.options.setCameraType(previousCameraType);
         }
+        if (enabled && client.getCameraEntity() == cameraEntity) {
+            client.setCameraEntity(previousCameraEntity != null ? previousCameraEntity : client.player);
+        }
         enabled = false;
         position = null;
         previousCameraType = null;
+        previousCameraEntity = null;
+        cameraEntity = null;
         yaw = 0.0F;
         pitch = 0.0F;
         forward = false;
@@ -179,6 +201,17 @@ public final class VeyraFreecam {
         up = false;
         down = false;
         fast = false;
+    }
+
+    private static void syncCameraEntity() {
+        if (cameraEntity == null || position == null) {
+            return;
+        }
+
+        cameraEntity.setOldPosAndRot(position, yaw, pitch);
+        cameraEntity.setPos(position);
+        cameraEntity.setYRot(yaw);
+        cameraEntity.setXRot(pitch);
     }
 
     private static double clamp(double value, double min, double max) {

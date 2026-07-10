@@ -9,15 +9,15 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 public final class VeyraTutorialScreen extends Screen {
-    private static final String[] FEATURES = {
-            "\\ opens Block Search: pick a block and Veyra outlines the nearest loaded match.",
-            "Shift + \\ cancels/clears the current Block ESP target instantly.",
-            "Right Shift opens the in-game Veyra menu for ESP, tracers, HUD, waypoints, and visuals.",
-            "Entity Hitboxes can outline players, animals, and hostile mobs at long range.",
-            "Waypoints can mark your position, your looked-at block, and your death point.",
-            "HUD Edit lets you drag modules, detach windows, change scale, and compact the overlay.",
-            "Appearance changes themes and custom button styles; the title screen Theme button cycles fast.",
-            "C toggles Veyra Freecam. Change keybinds in Minecraft controls if needed."
+    private static final Feature[] FEATURES = {
+            new Feature("BLOCK SCANNER", "\\ queues targets; all matches highlight, nearest gets the tracer"),
+            new Feature("QUICK CLEAR", "Shift + \\ cancels every active scan immediately"),
+            new Feature("CONTROL CENTER", "Right Shift opens every Veyra client setting in-game"),
+            new Feature("ENTITY ESP", "Outline players, animals, and hostile mobs independently"),
+            new Feature("WAYPOINTS", "Mark here, mark what you see, and preserve death locations"),
+            new Feature("HUD WORKSPACE", "Drag, detach, scale, and compact individual HUD modules"),
+            new Feature("APPEARANCE", "Cycle color themes and choose a custom button treatment"),
+            new Feature("FREECAM", "C toggles freecam; keybinds remain editable in Controls")
     };
 
     private final Screen parent;
@@ -40,7 +40,7 @@ public final class VeyraTutorialScreen extends Screen {
 
     @Override
     protected void init() {
-        panelW = Math.min(620, this.width - 32);
+        panelW = Math.min(700, this.width - 32);
         panelH = Math.min(360, this.height - 32);
         panelX = (this.width - panelW) / 2;
         panelY = (this.height - panelH) / 2;
@@ -83,18 +83,31 @@ public final class VeyraTutorialScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         VeyraUi.screenBackground(graphics, this.width, this.height, false);
-        VeyraUi.panel(graphics, panelX, panelY, panelW, panelH);
-        graphics.fill(panelX + 1, panelY + 1, panelX + panelW - 1, panelY + 48, VeyraUi.withAlpha(VeyraUi.SURFACE, 0xB8));
-        graphics.fill(panelX + 24, panelY + 49, panelX + panelW - 24, panelY + 50, VeyraUi.EDGE);
+        VeyraUi.shell(
+                graphics,
+                this.font,
+                panelX,
+                panelY,
+                panelW,
+                panelH,
+                "Welcome to Veyra",
+                "Eight client systems. One clean control layer.",
+                "QUICK START"
+        );
 
-        VeyraUi.text(graphics, this.font, "Welcome to Veyra", panelX + 24, panelY + 17, VeyraUi.TEXT);
-        VeyraUi.text(graphics, this.font, "Quick startup guide for the tools and shortcuts", panelX + 162, panelY + 17, VeyraUi.MUTED);
-
-        int y = panelY + 68;
-        for (String feature : FEATURES) {
-            graphics.fill(panelX + 26, y + 3, panelX + 30, y + 7, VeyraUi.ACCENT);
-            VeyraUi.text(graphics, this.font, feature, panelX + 38, y, VeyraUi.TEXT);
-            y += 24;
+        int gap = 10;
+        int cardWidth = (panelW - 58 - gap) / 2;
+        int cardHeight = 45;
+        for (int index = 0; index < FEATURES.length; index++) {
+            Feature feature = FEATURES[index];
+            int column = index % 2;
+            int row = index / 2;
+            int x = panelX + 24 + column * (cardWidth + gap);
+            int y = panelY + 66 + row * (cardHeight + 7);
+            VeyraUi.card(graphics, x, y, cardWidth, cardHeight, false);
+            graphics.fill(x + 10, y + 10, x + 16, y + 16, index % 2 == 0 ? VeyraUi.ACCENT : VeyraUi.TEAL);
+            VeyraUi.text(graphics, this.font, feature.title(), x + 23, y + 7, VeyraUi.TEXT);
+            VeyraUi.text(graphics, this.font, VeyraUi.fit(this.font, feature.description(), cardWidth - 20), x + 10, y + 25, VeyraUi.MUTED);
         }
 
         drawCheckbox(graphics, mouseX, mouseY);
@@ -123,10 +136,13 @@ public final class VeyraTutorialScreen extends Screen {
         if (dontShowAgain) {
             VeyraOnboarding.dismissForever();
         }
-        Minecraft.getInstance().setScreen(parent);
+        Minecraft.getInstance().gui.setScreen(parent);
     }
 
     private static boolean contains(double mouseX, double mouseY, int x, int y, int width, int height) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    }
+
+    private record Feature(String title, String description) {
     }
 }

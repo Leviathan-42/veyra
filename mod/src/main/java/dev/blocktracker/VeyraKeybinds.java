@@ -52,24 +52,24 @@ public final class VeyraKeybinds {
         while (OPEN_SEARCH.consumeClick()) {
             if (isShiftDown(client)) {
                 BlockTrackerState.clear();
-                if (client.screen instanceof BlockSearchScreen) {
-                    client.setScreen(null);
+                if (client.gui.screen() instanceof BlockSearchScreen) {
+                    client.gui.setScreen(null);
                 }
                 continue;
             }
 
-            if (client.screen instanceof BlockSearchScreen) {
-                client.setScreen(null);
-            } else if (client.screen == null) {
-                client.setScreen(new BlockSearchScreen());
+            if (client.gui.screen() instanceof BlockSearchScreen) {
+                client.gui.setScreen(null);
+            } else if (client.gui.screen() == null) {
+                client.gui.setScreen(new BlockSearchScreen());
             }
         }
 
         while (OPEN_MENU.consumeClick()) {
-            if (client.screen instanceof BlockTrackerConfigScreen) {
-                client.setScreen(null);
-            } else if (client.screen == null) {
-                client.setScreen(new BlockTrackerConfigScreen());
+            if (client.gui.screen() instanceof BlockTrackerConfigScreen) {
+                client.gui.setScreen(null);
+            } else if (client.gui.screen() == null) {
+                client.gui.setScreen(new BlockTrackerConfigScreen());
             }
         }
     }

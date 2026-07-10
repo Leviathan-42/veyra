@@ -10,6 +10,7 @@ import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -31,6 +32,8 @@ public final class BlockTrackerRenderer {
     private static final double BEAM_HALF_WIDTH = 0.18D;
     private static final double ENTITY_ESP_RANGE_SQ = 256.0D * 256.0D;
     private static final int MAX_ENTITY_BOXES = 192;
+    private static final int MAX_INDIVIDUAL_BLOCK_HIGHLIGHTS = 8_192;
+    private static final int MAX_NEAREST_RECOVERY_CHECKS = 8_192;
 
     private static final GizmoStyle BOX_STYLE = GizmoStyle.stroke(BOX_STROKE, 2.0F);
     private static final GizmoStyle BOX_STYLE_2 = GizmoStyle.stroke(BOX_STROKE_2, 2.0F);
@@ -67,28 +70,86 @@ public final class BlockTrackerRenderer {
     }
 
     private static void emitBlockTarget(Minecraft client, Player player, Level level, int index, BlockTrackerState.BlockTarget target) {
-        BlockPos targetPos = target.pos();
         List<Block> targetBlocks = target.blocks();
         Identifier targetId = target.id();
+        BlockScan.ScanResults results = target.results();
 
-        if (targetPos == null || targetBlocks.isEmpty() || targetId == null) {
-            if (BlockTrackerState.shouldRetarget()) {
-                BlockTrackerState.updateBlockTargetPos(index, BlockScan.findClosest(client, targetBlocks, BlockScan.DEFAULT_CHUNK_RADIUS));
-            }
+        if (targetBlocks.isEmpty() || targetId == null) {
             return;
         }
 
-        if (!level.hasChunkAt(targetPos) || targetBlocks.stream().noneMatch(block -> level.getBlockState(targetPos).is(block))) {
-            if (BlockTrackerState.shouldRetarget()) {
-                BlockTrackerState.updateBlockTargetPos(index, BlockScan.findClosest(client, targetBlocks, BlockScan.DEFAULT_CHUNK_RADIUS));
-            }
+        if (results == null) {
+            BlockScan.requestIfNeeded(client, targetId, targetBlocks, BlockTrackerState.blockScanRadius());
             return;
         }
 
         int styleIndex = Math.min(index, BLOCK_STYLES.length - 1);
-        if (BlockTrackerState.blockEspEnabled()) {
-            Gizmos.cuboid(targetPos, BLOCK_STYLES[styleIndex])
-                    .setAlwaysOnTop();
+        BlockPos nearest = null;
+
+        if (results.matchCount() <= MAX_INDIVIDUAL_BLOCK_HIGHLIGHTS) {
+            double nearestDistance = Double.MAX_VALUE;
+            for (BlockScan.SectionMatches section : results.sections()) {
+                if (!level.hasChunkAt(section.origin())) {
+                    continue;
+                }
+
+                for (int localIndex = section.nextMatch(0);
+                     localIndex >= 0;
+                     localIndex = section.nextMatch(localIndex + 1)) {
+                    BlockPos position = section.position(localIndex);
+                    if (!isTargetBlock(level, position, targetBlocks)) {
+                        continue;
+                    }
+
+                    if (BlockTrackerState.blockEspEnabled()) {
+                        Gizmos.cuboid(position, BLOCK_STYLES[styleIndex]).setAlwaysOnTop();
+                    }
+
+                    double distance = position.distSqr(player.blockPosition());
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearest = position;
+                    }
+                }
+            }
+        } else {
+            if (BlockTrackerState.blockEspEnabled()) {
+                for (BlockScan.ChunkBounds bounds : results.chunkBounds()) {
+                    BlockPos origin = new BlockPos(bounds.chunkX() << 4, bounds.minSectionY() << 4, bounds.chunkZ() << 4);
+                    if (!level.hasChunkAt(origin)) {
+                        continue;
+                    }
+
+                    AABB region = new AABB(
+                            bounds.chunkX() << 4,
+                            bounds.minSectionY() << 4,
+                            bounds.chunkZ() << 4,
+                            (bounds.chunkX() << 4) + 16,
+                            (bounds.maxSectionY() + 1) << 4,
+                            (bounds.chunkZ() << 4) + 16
+                    );
+                    Gizmos.cuboid(region, BLOCK_STYLES[styleIndex]).setAlwaysOnTop();
+                }
+            }
+
+            BlockPos cachedNearest = target.pos();
+            if (cachedNearest != null && level.hasChunkAt(cachedNearest) && isTargetBlock(level, cachedNearest, targetBlocks)) {
+                nearest = cachedNearest;
+            } else {
+                nearest = findNearestValid(level, player, targetBlocks, results, MAX_NEAREST_RECOVERY_CHECKS);
+            }
+        }
+
+        if (nearest == null) {
+            if (results.complete()) {
+                BlockTrackerState.clearBlockTargetResults(targetId);
+                BlockScan.requestIfNeeded(client, targetId, targetBlocks, BlockTrackerState.blockScanRadius());
+            }
+            return;
+        }
+
+        if (!nearest.equals(target.pos())) {
+            BlockTrackerState.updateBlockTargetPos(index, nearest);
         }
 
         if (!BlockTrackerState.tracerEnabled()) {
@@ -96,10 +157,59 @@ public final class BlockTrackerRenderer {
         }
 
         Vec3 start = player.position().add(0.0D, player.getBbHeight() * 0.82D, 0.0D);
-        Vec3 end = Vec3.atCenterOf(targetPos);
+        Vec3 end = Vec3.atCenterOf(nearest);
 
         Gizmos.line(start, end, BLOCK_LINE_COLORS[styleIndex], 7.0F)
                 .setAlwaysOnTop();
+    }
+
+    private static BlockPos findNearestValid(
+            Level level,
+            Player player,
+            List<Block> targetBlocks,
+            BlockScan.ScanResults results,
+            int maxChecks
+    ) {
+        BlockPos nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        int checked = 0;
+
+        for (BlockScan.SectionMatches section : results.sections()) {
+            if (!level.hasChunkAt(section.origin())) {
+                continue;
+            }
+
+            for (int localIndex = section.nextMatch(0);
+                 localIndex >= 0 && checked < maxChecks;
+                 localIndex = section.nextMatch(localIndex + 1)) {
+                checked++;
+                BlockPos position = section.position(localIndex);
+                if (!isTargetBlock(level, position, targetBlocks)) {
+                    continue;
+                }
+
+                double distance = position.distSqr(player.blockPosition());
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearest = position;
+                }
+            }
+
+            if (checked >= maxChecks) {
+                break;
+            }
+        }
+        return nearest;
+    }
+
+    private static boolean isTargetBlock(Level level, BlockPos position, List<Block> targets) {
+        var state = level.getBlockState(position);
+        for (Block block : targets) {
+            if (state.is(block)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void emitWaypoints(Minecraft client) {
@@ -109,12 +219,12 @@ public final class BlockTrackerRenderer {
             return;
         }
 
-        for (BlockTrackerState.Waypoint waypoint : BlockTrackerState.waypoints()) {
+        for (BlockTrackerState.Waypoint waypoint : BlockTrackerState.waypointsFor(level)) {
             BlockPos pos = waypoint.pos();
             emitBeacon(level, pos, WAYPOINT_BEAM_COLOR, WAYPOINT_STYLE);
         }
 
-        BlockPos death = BlockTrackerState.deathMarker();
+        BlockPos death = BlockTrackerState.deathMarkerFor(level);
         if (death != null) {
             emitBeacon(level, death, DEATH_BEAM_COLOR, DEATH_STYLE);
         }

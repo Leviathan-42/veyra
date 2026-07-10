@@ -26,8 +26,31 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": []
+    "targets": ["nsis"],
+    "publisher": "Veyra",
+    "category": "Game",
+    "shortDescription": "Veyra Minecraft launcher and client utility suite",
+    "longDescription": "Installs and launches a managed Minecraft Java Edition instance with Fabric, Veyra, renderer profiles, performance mods, and automatic Java provisioning.",
+    "copyright": "Copyright 2026 Veyra",
+    "resources": {
+      "../../mod/build/libs/block-tracker-0.1.0.jar": "resources/block-tracker-0.1.0.jar"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
   },
   "plugins": {
     "opener": {}

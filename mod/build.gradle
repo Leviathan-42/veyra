@@ -79,8 +79,7 @@ tasks.withType(JavaCompile).configureEach {
 
 java {
     toolchain {
-        // Build with the current Homebrew OpenJDK while still emitting Java 25 bytecode
-        // through options.release above.
-        languageVersion = JavaLanguageVersion.of(26)
+        // Minecraft 26.2 runs on Java 25, so use the same toolchain and bytecode level.
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }

@@ -6,5 +6,6 @@ public final class BlockTrackerClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         BlockTrackerState.clear();
+        VeyraSettings.load();
     }
 }

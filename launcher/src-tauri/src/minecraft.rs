@@ -3,7 +3,7 @@ use crate::{
     types::{LaunchResult, VersionChoice},
 };
 use anyhow::{anyhow, Context, Result};
-use futures_util::StreamExt;
+use futures_util::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::{
@@ -12,8 +12,13 @@ use std::{
     io::Cursor,
     path::{Path, PathBuf},
     process::{Command as StdCommand, Stdio},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Instant,
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::{
     fs,
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -22,6 +27,9 @@ use tokio::{
 
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
+const TEMURIN_FEATURE_VERSION: u32 = 25;
+const BUNDLED_VEYRA_MOD: &str = "block-tracker-0.1.0.jar";
+const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
 const VULKAN_MANAGED_MODS: &[ManagedMod] = &[
     // Keep the Vulkan profile lean. VulkanMod is a renderer replacement, so
     // renderer/chunk/culling/network optimization mods can fight it or waste FPS.
@@ -140,6 +148,8 @@ struct Downloads {
 struct AssetIndex {
     id: String,
     url: String,
+    sha1: Option<String>,
+    size: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -329,6 +339,15 @@ fn detect_java_runtimes_blocking() -> Result<Vec<JavaRuntime>> {
 
 fn java_candidates() -> Vec<PathBuf> {
     let mut out = Vec::new();
+    if let Ok(app_dir) = paths::app_dir() {
+        out.push(
+            app_dir
+                .join("runtime")
+                .join("java-25")
+                .join("bin")
+                .join(java_exe_name()),
+        );
+    }
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
         out.push(PathBuf::from(java_home).join("bin").join(java_exe_name()));
     }
@@ -567,21 +586,126 @@ pub async fn list_versions() -> Result<Vec<VersionChoice>> {
         .collect())
 }
 
-fn resolve_java_path(java_path: &str) -> String {
+async fn resolve_or_install_java(app: &AppHandle, java_path: &str) -> Result<String> {
     let trimmed = java_path.trim();
     if !trimmed.is_empty() && trimmed != "java" {
-        return trimmed.to_string();
+        let candidate = Path::new(trimmed);
+        if inspect_java_runtime(candidate).is_some_and(|runtime| runtime.compatible) {
+            return Ok(trimmed.to_string());
+        }
     }
 
-    match detect_java_runtimes_blocking() {
-        Ok(runtimes) => runtimes
-            .iter()
-            .find(|runtime| runtime.compatible)
-            .or_else(|| runtimes.first())
-            .map(|runtime| runtime.path.clone())
-            .unwrap_or_else(|| "java".to_string()),
-        Err(_) => "java".to_string(),
+    if let Ok(runtimes) = detect_java_runtimes_blocking() {
+        if let Some(runtime) = runtimes.iter().find(|runtime| runtime.compatible) {
+            return Ok(runtime.path.clone());
+        }
     }
+
+    install_managed_java(app).await
+}
+
+async fn install_managed_java(app: &AppHandle) -> Result<String> {
+    if !cfg!(target_os = "windows") {
+        return Err(anyhow!(
+            "Java {MIN_COMPATIBLE_JAVA}+ was not found. Automatic Java installation is currently available in the Windows installer."
+        ));
+    }
+
+    let app_dir = paths::app_dir()?;
+    let runtime_root = app_dir.join("runtime");
+    let java_dir = runtime_root.join("java-25");
+    let java_executable = java_dir.join("bin").join(java_exe_name());
+    if inspect_java_runtime(&java_executable).is_some_and(|runtime| runtime.compatible) {
+        return Ok(java_executable.display().to_string());
+    }
+
+    let architecture = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else if cfg!(target_arch = "x86_64") {
+        "x64"
+    } else {
+        return Err(anyhow!(
+            "Automatic Java installation does not support this Windows architecture"
+        ));
+    };
+    let url = format!(
+        "https://api.adoptium.net/v3/binary/latest/{TEMURIN_FEATURE_VERSION}/ga/windows/{architecture}/jre/hotspot/normal/eclipse"
+    );
+    let archive_path = runtime_root.join("temurin-25-jre.zip");
+    let staging_dir = runtime_root.join("java-25-installing");
+
+    app.emit("launcher-status", "Installing managed Java 25 runtime")
+        .ok();
+    app.emit(
+        "launch-log",
+        "No compatible Java runtime was found; downloading Eclipse Temurin 25",
+    )
+    .ok();
+    fs::create_dir_all(&runtime_root).await?;
+    if archive_path.exists() {
+        let _ = fs::remove_file(&archive_path).await;
+    }
+    download_url(app, "Java 25 runtime", &url, &archive_path, None, None).await?;
+
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir).await?;
+    }
+    fs::create_dir_all(&staging_dir).await?;
+    let archive_for_extract = archive_path.clone();
+    let staging_for_extract = staging_dir.clone();
+    let extraction = tokio::task::spawn_blocking(move || {
+        extract_java_archive(&archive_for_extract, &staging_for_extract)
+    })
+    .await
+    .context("Java extraction task failed")?;
+    if let Err(error) = extraction {
+        let _ = fs::remove_file(&archive_path).await;
+        let _ = fs::remove_dir_all(&staging_dir).await;
+        return Err(error.context("Downloaded Java runtime could not be extracted"));
+    }
+
+    if java_dir.exists() {
+        fs::remove_dir_all(&java_dir).await?;
+    }
+    fs::rename(&staging_dir, &java_dir).await?;
+    let _ = fs::remove_file(&archive_path).await;
+
+    let runtime = inspect_java_runtime(&java_executable)
+        .filter(|runtime| runtime.compatible)
+        .context("Managed Java installation completed, but Java 25 could not be started")?;
+    app.emit(
+        "launch-log",
+        format!("Installed {} at {}", runtime.vendor, runtime.path),
+    )
+    .ok();
+    Ok(runtime.path)
+}
+
+fn extract_java_archive(archive_path: &Path, destination: &Path) -> Result<()> {
+    let archive_file = File::open(archive_path)?;
+    let mut archive = zip::ZipArchive::new(archive_file)?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let enclosed = entry
+            .enclosed_name()
+            .context("Java archive contains an unsafe path")?;
+        let relative: PathBuf = enclosed.components().skip(1).collect();
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+
+        let output = destination.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&output)?;
+            continue;
+        }
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut output_file = File::create(output)?;
+        std::io::copy(&mut entry, &mut output_file)?;
+    }
+    Ok(())
 }
 
 fn normalized_render_profile(render_profile: Option<&str>) -> &'static str {
@@ -620,6 +744,7 @@ pub async fn install_and_launch(
     window_height: Option<u32>,
     fullscreen: Option<bool>,
     render_profile: Option<String>,
+    memory_mb: Option<u32>,
 ) -> Result<LaunchResult> {
     let account = auth::launch_account().await?;
     let game_dir = paths::game_dir()?;
@@ -628,7 +753,7 @@ pub async fn install_and_launch(
     fs::create_dir_all(game_dir.join("mods")).await?;
     install_managed_client_mods(&app, &game_dir, &version_id, render_profile).await?;
     sync_profile_mods_to_active_mods(&app, &game_dir, render_profile).await?;
-    sync_development_block_tracker_mod(&app, &game_dir).await?;
+    sync_veyra_mod(&app, &game_dir).await?;
 
     app.emit("launcher-status", format!("Installing {version_id}"))
         .ok();
@@ -649,6 +774,7 @@ pub async fn install_and_launch(
         &game_dir,
         &classpath,
         &natives_dir,
+        memory_mb,
     ));
     args.push(version.main_class.clone());
     args.extend(expand_game_args(
@@ -666,12 +792,20 @@ pub async fn install_and_launch(
         fullscreen.unwrap_or(false),
     );
 
-    let resolved_java_path = resolve_java_path(&java_path);
+    let resolved_java_path = resolve_or_install_java(&app, &java_path).await?;
     app.emit("launcher-status", "Starting Minecraft").ok();
     app.emit("launch-log", format!("Render profile: {render_profile}"))
         .ok();
     app.emit("launch-log", format!("Using Java: {resolved_java_path}"))
         .ok();
+    app.emit(
+        "launch-log",
+        format!(
+            "Allocated memory: {} MB",
+            memory_mb.unwrap_or(4096).clamp(2048, 16384)
+        ),
+    )
+    .ok();
     let child = Command::new(&resolved_java_path)
         .args(args)
         .current_dir(&game_dir)
@@ -835,29 +969,36 @@ async fn install_modrinth_mod(
     Ok(())
 }
 
-async fn sync_development_block_tracker_mod(app: &AppHandle, game_dir: &Path) -> Result<()> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let Some(workspace_dir) = manifest_dir.parent().and_then(Path::parent) else {
-        return Ok(());
+async fn sync_veyra_mod(app: &AppHandle, game_dir: &Path) -> Result<()> {
+    let bundled_source = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|resource_dir| resource_dir.join("resources").join(BUNDLED_VEYRA_MOD));
+
+    #[cfg(debug_assertions)]
+    let source = {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let development_source =
+            manifest_dir
+                .parent()
+                .and_then(Path::parent)
+                .map(|workspace_dir| {
+                    workspace_dir
+                        .join("mod")
+                        .join("build")
+                        .join("libs")
+                        .join(BUNDLED_VEYRA_MOD)
+                });
+        development_source
+            .filter(|path| path.exists())
+            .or_else(|| bundled_source.filter(|path| path.exists()))
     };
 
-    let source = workspace_dir
-        .join("mod")
-        .join("build")
-        .join("libs")
-        .join("block-tracker-0.1.0.jar");
+    #[cfg(not(debug_assertions))]
+    let source = bundled_source.filter(|path| path.exists());
 
-    if !source.exists() {
-        app.emit(
-            "launch-log",
-            format!(
-                "Veyra mod jar was not found at {}. Build the mod to enable in-game utilities.",
-                source.display()
-            ),
-        )
-        .ok();
-        return Ok(());
-    }
+    let source = source.context("The Veyra mod is missing from the launcher resources")?;
 
     let mods_dir = game_dir.join("mods");
     fs::create_dir_all(&mods_dir).await?;
@@ -1038,34 +1179,83 @@ async fn install_assets(app: &AppHandle, game_dir: &Path, version: &VersionJson)
         "asset index",
         &version.asset_index.url,
         &index_path,
-        None,
-        None,
+        version.asset_index.sha1.as_deref(),
+        version.asset_index.size,
     )
     .await?;
 
     let assets: AssetObjects = serde_json::from_slice(&fs::read(&index_path).await?)?;
-    let total = assets.objects.len();
-    for (index, object) in assets.objects.values().enumerate() {
-        let prefix = &object.hash[0..2];
-        let object_path = game_dir
-            .join("assets")
-            .join("objects")
-            .join(prefix)
-            .join(&object.hash);
-        let url = format!(
-            "https://resources.download.minecraft.net/{prefix}/{}",
-            object.hash
-        );
-        download_url(
-            app,
-            &format!("asset {}/{}", index + 1, total),
-            &url,
-            &object_path,
-            Some(&object.hash),
-            Some(object.size),
-        )
-        .await?;
+    let mut unique_assets = HashMap::new();
+    for object in assets.objects.into_values() {
+        unique_assets.entry(object.hash).or_insert(object.size);
     }
+
+    let total = unique_assets.len();
+    if total == 0 {
+        return Ok(());
+    }
+
+    let started_at = Instant::now();
+    app.emit(
+        "launcher-status",
+        format!("Downloading/verifying {total} assets ({ASSET_DOWNLOAD_CONCURRENCY} parallel)"),
+    )
+    .ok();
+
+    let client = reqwest::Client::builder()
+        .pool_max_idle_per_host(ASSET_DOWNLOAD_CONCURRENCY)
+        .build()?;
+    let completed = Arc::new(AtomicUsize::new(0));
+    let progress_step = (total / 100).max(10);
+    let assets_root = game_dir.join("assets").join("objects");
+    let app_handle = app.clone();
+
+    stream::iter(unique_assets.into_iter().map(Ok::<_, anyhow::Error>))
+        .try_for_each_concurrent(ASSET_DOWNLOAD_CONCURRENCY, move |(hash, size)| {
+            let client = client.clone();
+            let app = app_handle.clone();
+            let completed = completed.clone();
+            let assets_root = assets_root.clone();
+            async move {
+                let prefix = hash
+                    .get(0..2)
+                    .with_context(|| format!("Invalid asset hash in index: {hash}"))?;
+                let object_path = assets_root.join(prefix).join(&hash);
+                let url = format!("https://resources.download.minecraft.net/{prefix}/{hash}");
+                download_url_with_client(
+                    &client,
+                    &app,
+                    &format!("asset {hash}"),
+                    &url,
+                    &object_path,
+                    Some(&hash),
+                    Some(size),
+                    false,
+                )
+                .await?;
+
+                let finished = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if finished == total || finished % progress_step == 0 {
+                    let percent = finished * 100 / total;
+                    app.emit(
+                        "launcher-status",
+                        format!("Assets {finished}/{total} ({percent}%)"),
+                    )
+                    .ok();
+                }
+                Ok(())
+            }
+        })
+        .await?;
+
+    app.emit(
+        "launch-log",
+        format!(
+            "Verified {total} unique assets in {:.1}s",
+            started_at.elapsed().as_secs_f32()
+        ),
+    )
+    .ok();
 
     Ok(())
 }
@@ -1184,13 +1374,39 @@ async fn download_url(
     sha1: Option<&str>,
     size: Option<u64>,
 ) -> Result<()> {
+    let client = reqwest::Client::new();
+    download_url_with_client(&client, app, label, url, path, sha1, size, true).await
+}
+
+async fn download_url_with_client(
+    client: &reqwest::Client,
+    app: &AppHandle,
+    label: &str,
+    url: &str,
+    path: &Path,
+    sha1: Option<&str>,
+    size: Option<u64>,
+    report_status: bool,
+) -> Result<()> {
     if valid_existing(path, sha1, size).await? {
         return Ok(());
     }
 
     let mut last_error = None;
     for attempt in 1..=5 {
-        match download_url_once(app, label, url, path, sha1, size, attempt).await {
+        match download_url_once(
+            client,
+            app,
+            label,
+            url,
+            path,
+            sha1,
+            size,
+            attempt,
+            report_status,
+        )
+        .await
+        {
             Ok(()) => return Ok(()),
             Err(error) => {
                 last_error = Some(error);
@@ -1203,6 +1419,7 @@ async fn download_url(
 }
 
 async fn download_url_once(
+    client: &reqwest::Client,
     app: &AppHandle,
     label: &str,
     url: &str,
@@ -1210,6 +1427,7 @@ async fn download_url_once(
     sha1: Option<&str>,
     size: Option<u64>,
     attempt: u64,
+    report_status: bool,
 ) -> Result<()> {
     if valid_existing(path, sha1, size).await? {
         return Ok(());
@@ -1241,13 +1459,14 @@ async fn download_url_once(
     } else {
         String::new()
     };
-    app.emit(
-        "launcher-status",
-        format!("Downloading {label} (try {attempt}/5{resume_text})"),
-    )
-    .ok();
+    if report_status {
+        app.emit(
+            "launcher-status",
+            format!("Downloading {label} (try {attempt}/5{resume_text})"),
+        )
+        .ok();
+    }
 
-    let client = reqwest::Client::new();
     let mut request = client.get(url);
     if resume_from > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
@@ -1431,9 +1650,9 @@ fn expand_jvm_args(
     game_dir: &Path,
     classpath: &str,
     natives_dir: &Path,
+    memory_mb: Option<u32>,
 ) -> Vec<String> {
     let mut args = vec![
-        "-Xmx4G".to_string(),
         "-XX:+UnlockExperimentalVMOptions".to_string(),
         "-XX:+UseG1GC".to_string(),
     ];
@@ -1450,7 +1669,14 @@ fn expand_jvm_args(
         args.push(classpath.to_string());
     }
 
-    args.retain(|arg| arg != "--sun-misc-unsafe-memory-access=allow");
+    args.retain(|arg| {
+        arg != "--sun-misc-unsafe-memory-access=allow"
+            && !arg.starts_with("-Xmx")
+            && !arg.starts_with("-Xms")
+    });
+    let memory_mb = memory_mb.unwrap_or(4096).clamp(2048, 16384);
+    args.insert(0, format!("-Xmx{memory_mb}M"));
+    args.insert(0, "-Xms512M".to_string());
 
     args
 }

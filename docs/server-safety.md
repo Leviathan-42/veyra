@@ -1,49 +1,40 @@
-# Server Safety / Rules
+# Server safety and rules
 
-The current Veyra mod code is client-side.
+Veyra is implemented as a client-only Fabric mod. A vanilla server does not need Veyra installed for the client to connect.
 
-It reads client-known data and draws local overlays. It does not currently implement custom packet sending, reach changes, player movement changes, combat automation, inventory automation, or rotation spoofing.
+## Current technical boundary
 
-## Current client-side behavior
+The mod currently:
 
-Current features include:
+- scans block data already loaded on the client with a bounded per-tick budget;
+- renders local block/entity boxes, tracers, labels, waypoints, and HUD modules;
+- displays local performance, ping history, self-status warnings, music, time, keystrokes, and CPS telemetry;
+- stores local waypoints, death marker, appearance, and HUD settings;
+- adjusts the client lightmap for optional fullbright;
+- replaces local title/settings/search/tutorial screens;
+- uses a client-only marker entity for the FreeCam viewpoint; and
+- clears player movement input while FreeCam is active.
 
-- scanning loaded client chunks for blocks, currently up to a 12-chunk radius from the player
-- drawing block ESP/tracers locally
-- drawing entity boxes locally
-- local HUD labels
-- local config/search screens
-- durability/effect/FPS/ping/RAM/coordinate HUD
-- local waypoints and death marker
-- optional local fullbright lightmap adjustment
-- local freecam camera movement that cancels player movement input while active
+It does not currently implement custom gameplay packets, reach changes, combat or inventory automation, movement-speed changes, rotation spoofing, or server-required content.
 
-From the code currently present, normal gameplay packets should remain vanilla unless future features change that. It should be able to connect to vanilla servers because the server does not need to install Veyra.
+FreeCam deliberately leaves the real player in place and therefore does not request server chunks around the detached camera. On multiplayer, visible terrain remains limited to data sent around the actual player.
 
-## Important caveat
+## Rules still apply
 
-Client-side does **not** mean allowed.
+Client-only does not mean permitted. A server can prohibit overlays, FreeCam, fullbright, block search, or all non-approved clients. Enforcement may be based on behavior, required-client policies, screenshots/streams, or staff review rather than technical packet detection.
 
-Servers can ban mods or behavior by rule even when the server cannot directly inspect the overlay. Risk can still come from:
+Use Veyra only in singleplayer, on private/testing servers, or where the server's rules explicitly allow the features you enable.
 
-- staff watching gameplay
-- suspicious mining/navigation/combat behavior
-- required-client or allowed-mod policies
-- screenshots/streams/clips
-- future features that alter gameplay or networking
+## Features to avoid if this boundary matters
 
-## Avoid for public-server safety
+Do not add:
 
-Do not add features that alter or automate gameplay if the goal is to stay within normal client behavior:
+- reach, speed, flight, or knockback modification;
+- aim assist, kill aura, trigger bots, or auto-clicking;
+- scaffold, nuker, or automated block interaction;
+- inventory automation;
+- packet cancellation/injection intended to change gameplay;
+- movement/rotation spoofing; or
+- server chunk requests driven by the detached FreeCam camera.
 
-- reach changes
-- speed/fly/movement changes
-- aim assist/kill aura
-- auto-clicking
-- scaffold/bridging automation
-- nuker or block automation
-- inventory automation
-- packet manipulation
-- rotation spoofing
-
-Use Veyra only where the server rules allow it.
+Any future feature that sends packets or changes networked player state must update this document and be reviewed as a separate compatibility/security boundary.

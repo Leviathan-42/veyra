@@ -1,5 +1,6 @@
 # Workspace tooling/build output
 .tools/
+build/
 
 # Node/Svelte
 launcher/node_modules/

@@ -1,8 +1,11 @@
 package dev.blocktracker.mixin;
 
 import dev.blocktracker.VeyraFreecam;
+import dev.blocktracker.VeyraHudTelemetry;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
+import net.minecraft.client.input.MouseButtonInfo;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,6 +22,15 @@ public abstract class FreecamMouseMixin {
 
     @Shadow
     private double accumulatedDY;
+
+    @Inject(method = "onButton", at = @At("HEAD"))
+    private void veyra$recordDisplayOnlyCps(long window, MouseButtonInfo button, int action, CallbackInfo ci) {
+        if (button.button() == InputConstants.MOUSE_BUTTON_LEFT
+                && action == InputConstants.PRESS
+                && minecraft.gui.screen() == null) {
+            VeyraHudTelemetry.recordLeftClick();
+        }
+    }
 
     @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
     private void veyra$adjustFreecamSpeed(long window, double horizontal, double vertical, CallbackInfo ci) {

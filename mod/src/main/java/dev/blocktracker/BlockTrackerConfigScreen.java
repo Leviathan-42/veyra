@@ -30,8 +30,8 @@ public final class BlockTrackerConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        panelWidth = Math.min(560, this.width - 28);
-        panelHeight = Math.min(330, this.height - 28);
+        panelWidth = Math.min(620, this.width - 28);
+        panelHeight = Math.min(360, this.height - 28);
         panelX = (this.width - panelWidth) / 2;
         panelY = (this.height - panelHeight) / 2;
         rebuildLayout();
@@ -42,17 +42,17 @@ public final class BlockTrackerConfigScreen extends Screen {
         tabs.clear();
 
         int navX = panelX + 16;
-        int navY = panelY + 64;
-        int navWidth = 132;
+        int navY = panelY + 82;
+        int navWidth = 144;
         int tabHeight = 28;
         for (Tab tab : Tab.values()) {
             tabs.add(new TabControl(navX, navY, navWidth, tabHeight, tab));
             navY += tabHeight + 8;
         }
 
-        int contentX = panelX + 168;
-        int contentY = panelY + 70;
-        int contentWidth = panelWidth - 192;
+        int contentX = panelX + 182;
+        int contentY = panelY + 82;
+        int contentWidth = panelWidth - 200;
         int half = (contentWidth - 10) / 2;
 
         switch (activeTab) {
@@ -62,6 +62,9 @@ public final class BlockTrackerConfigScreen extends Screen {
                 contentY += 38;
                 addToggle(contentX, contentY, half, "Top HUD", BlockTrackerState::hudLabelEnabled, BlockTrackerState::toggleHudLabel);
                 addAction(contentX + half + 10, contentY, half, "Clear Targets", BlockTrackerState::clear);
+                contentY += 38;
+                addAction(contentX, contentY, half, "Range -", BlockTrackerState::decreaseBlockScanRadius);
+                addAction(contentX + half + 10, contentY, half, "Range: " + BlockTrackerState.blockScanRadius() + " chunks +", BlockTrackerState::increaseBlockScanRadius);
             }
             case ENTITIES -> {
                 addToggle(contentX, contentY, contentWidth, "Entity Hitboxes", BlockTrackerState::entityEspEnabled, BlockTrackerState::toggleEntityEsp);
@@ -84,7 +87,7 @@ public final class BlockTrackerConfigScreen extends Screen {
             }
             case VISUALS -> {
                 addToggle(contentX, contentY, half, "Stats HUD", BlockTrackerState::statsHudEnabled, BlockTrackerState::toggleStatsHud);
-                addAction(contentX + half + 10, contentY, half, "Edit HUD", () -> Minecraft.getInstance().setScreen(new VeyraHudEditScreen()));
+                addAction(contentX + half + 10, contentY, half, "Edit HUD", () -> Minecraft.getInstance().gui.setScreen(new VeyraHudEditScreen()));
                 contentY += 38;
                 addToggle(contentX, contentY, half, "Fullbright", BlockTrackerState::fullbrightEnabled, BlockTrackerState::toggleFullbright);
                 addAction(contentX + half + 10, contentY, half, "HUD: " + (BlockTrackerState.hudCompactMode() ? "Compact" : "Expanded"), BlockTrackerState::toggleHudCompactMode);
@@ -95,18 +98,20 @@ public final class BlockTrackerConfigScreen extends Screen {
                 addAction(contentX + half + 10, contentY, half, "Size +", BlockTrackerState::increaseCrosshairSize);
                 contentY += 38;
                 addAction(contentX, contentY, half, "Size -", BlockTrackerState::decreaseCrosshairSize);
-                addAction(contentX + half + 10, contentY, half, "Done", () -> Minecraft.getInstance().setScreen(null));
+                addAction(contentX + half + 10, contentY, half, "Done", () -> Minecraft.getInstance().gui.setScreen(null));
+                contentY += 38;
+                addAction(contentX, contentY, contentWidth, "HUD Preset: " + BlockTrackerState.hudPresetName(), BlockTrackerState::cycleHudPreset);
             }
             case APPEARANCE -> {
                 addAction(contentX, contentY, contentWidth, "Theme: " + VeyraUi.themeName(), VeyraUi::cycleTheme);
                 contentY += 38;
                 addAction(contentX, contentY, contentWidth, "Buttons: " + VeyraUi.buttonStyleName(), VeyraUi::cycleButtonStyle);
                 contentY += 38;
-                addAction(contentX, contentY, half, "Startup Guide", () -> Minecraft.getInstance().setScreen(new VeyraTutorialScreen(this)));
+                addAction(contentX, contentY, half, "Startup Guide", () -> Minecraft.getInstance().gui.setScreen(new VeyraTutorialScreen(this)));
                 addAction(contentX + half + 10, contentY, half, "Show On Launch", VeyraOnboarding::showNextLaunch);
                 contentY += 38;
                 addAction(contentX, contentY, half, "Reset Appearance", VeyraUi::resetAppearance);
-                addAction(contentX + half + 10, contentY, half, "Done", () -> Minecraft.getInstance().setScreen(null));
+                addAction(contentX + half + 10, contentY, half, "Done", () -> Minecraft.getInstance().gui.setScreen(null));
             }
         }
     }
@@ -122,7 +127,7 @@ public final class BlockTrackerConfigScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (VeyraKeybinds.openMenuMatches(event) || event.key() == InputConstants.KEY_ESCAPE) {
-            Minecraft.getInstance().setScreen(null);
+            Minecraft.getInstance().gui.setScreen(null);
             return true;
         }
 
@@ -132,7 +137,7 @@ public final class BlockTrackerConfigScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (VeyraKeybinds.openMenuMatches(event)) {
-            Minecraft.getInstance().setScreen(null);
+            Minecraft.getInstance().gui.setScreen(null);
             return true;
         }
 
@@ -169,20 +174,24 @@ public final class BlockTrackerConfigScreen extends Screen {
         currentOffsetY = Math.round((1.0F - eased) * offscreenOffset);
 
         int y = panelY + currentOffsetY;
-        VeyraUi.panel(graphics, panelX, y, panelWidth, panelHeight);
-        graphics.fill(panelX + 1, y + 1, panelX + panelWidth - 1, y + 42, 0xB0141820);
-        graphics.fill(panelX + 18, y + 43, panelX + panelWidth - 18, y + 44, 0x4438424F);
-
-        VeyraUi.text(graphics, this.font, "Veyra", panelX + 20, y + 15, VeyraUi.TEXT);
-        VeyraUi.text(graphics, this.font, activeTab.title, panelX + 168, y + 15, VeyraUi.ACCENT);
-        String closeHint = "Esc / " + VeyraKeybinds.menuKeyName() + " closes";
-        VeyraUi.text(graphics, this.font, closeHint, panelX + panelWidth - VeyraUi.width(this.font, closeHint) - 20, y + 15, VeyraUi.MUTED);
+        VeyraUi.shell(
+                graphics,
+                this.font,
+                panelX,
+                y,
+                panelWidth,
+                panelHeight,
+                "Veyra Control Center",
+                "Configure client systems without leaving your world",
+                ""
+        );
 
         for (TabControl tab : tabs) {
             tab.extract(graphics, this.font, mouseX, mouseY, currentOffsetY, tab.tab() == activeTab);
         }
 
-        VeyraUi.text(graphics, this.font, activeTab.description, panelX + 168, panelY + currentOffsetY + 49, VeyraUi.MUTED);
+        VeyraUi.sectionLabel(graphics, this.font, activeTab.title, panelX + 182, y + 63, panelWidth - 200);
+        VeyraUi.text(graphics, this.font, activeTab.description, panelX + 18, y + panelHeight - 18, VeyraUi.SUBTLE);
 
         for (MenuControl control : controls) {
             control.extract(graphics, this.font, mouseX, mouseY, currentOffsetY);
@@ -195,7 +204,7 @@ public final class BlockTrackerConfigScreen extends Screen {
     }
 
     private enum Tab {
-        BLOCKS("Blocks", "Search, ESP, tracers, and target controls"),
+        BLOCKS("Blocks", "Search, ESP, tracers, and adjustable scan range"),
         ENTITIES("Entities", "Configure player, animal, and hostile overlays"),
         WAYPOINTS("Waypoints", "Drop markers, track locations, and manage death points"),
         VISUALS("Visuals", "HUD modules, fullbright, and display options"),
@@ -218,15 +227,11 @@ public final class BlockTrackerConfigScreen extends Screen {
         void extract(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font, int mouseX, int mouseY, int offsetY, boolean selected) {
             boolean hover = contains(mouseX, mouseY, offsetY);
             int drawY = y + offsetY;
-            int fill = selected ? VeyraUi.SURFACE_HOVER : hover ? VeyraUi.SURFACE : 0x00111111;
-            int edge = selected ? VeyraUi.ACCENT : hover ? VeyraUi.EDGE : 0x0038424F;
-
-            graphics.fill(x, drawY, x + width, drawY + height, fill);
-            graphics.outline(x, drawY, width, height, edge);
+            VeyraUi.card(graphics, x, drawY, width, height, selected || hover);
             if (selected) {
-                graphics.fill(x, drawY + 6, x + 2, drawY + height - 6, VeyraUi.ACCENT);
+                graphics.fill(x + width - 4, drawY + 10, x + width - 2, drawY + height - 10, VeyraUi.ACCENT);
             }
-            VeyraUi.text(graphics, font, tab.title, x + 12, drawY + 9, selected ? VeyraUi.TEXT : VeyraUi.MUTED);
+            VeyraUi.text(graphics, font, tab.title, x + 13, drawY + 9, selected ? VeyraUi.TEXT : VeyraUi.MUTED);
         }
     }
 
