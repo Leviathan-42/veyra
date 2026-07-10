@@ -25,16 +25,6 @@ Client-only does not mean permitted. A server can prohibit overlays, FreeCam, fu
 
 Use Veyra only in singleplayer, on private/testing servers, or where the server's rules explicitly allow the features you enable.
 
-## Features to avoid if this boundary matters
 
-Do not add:
-
-- reach, speed, flight, or knockback modification;
-- aim assist, kill aura, trigger bots, or auto-clicking;
-- scaffold, nuker, or automated block interaction;
-- inventory automation;
-- packet cancellation/injection intended to change gameplay;
-- movement/rotation spoofing; or
-- server chunk requests driven by the detached FreeCam camera.
 
 Any future feature that sends packets or changes networked player state must update this document and be reviewed as a separate compatibility/security boundary.
